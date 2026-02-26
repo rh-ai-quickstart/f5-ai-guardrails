@@ -1,6 +1,6 @@
 # Secure model inference with F5 Distributed Cloud API Security
 
-Protect AI inference endpoints on Red Hat OpenShift AI with F5 Distributed Cloud WAAP—WAF, API spec enforcement, shadow API prevention, and rate limiting.
+Secure AI-powered financial services applications on Red Hat OpenShift AI with F5 Distributed Cloud WAAP—protecting model endpoints against injection attacks, shadow APIs, and abuse while safeguarding sensitive financial data.
 
 ## Table of contents
 
@@ -21,15 +21,26 @@ Protect AI inference endpoints on Red Hat OpenShift AI with F5 Distributed Cloud
 
 ## Detailed description
 
-This AI quickstart shows how to protect AI inference endpoints on Red Hat® OpenShift® AI using F5 Distributed Cloud (XC) Web App & API Protection (WAAP) and API Security. You deploy a KServe/vLLM model service in OpenShift AI, front it with an F5 XC HTTP Load Balancer, and enforce API discovery, OpenAPI schema validation, rate limiting, bot defense, and sensitive-data controls. OpenShift AI’s single-model serving is KServe-based (recommended for LLMs), and KServe’s HuggingFace/vLLM runtime exposes OpenAI-compatible endpoints, which are secured via F5 XC.
+Imagine a financial services team deploying an AI-powered assistant to help underwriters review policies, analyze risk documents, and answer questions about compliance guidelines. The assistant uses a large language model served on Red Hat® OpenShift® AI, with Retrieval-Augmented Generation (RAG) grounding its answers in the firm's own document corpus—underwriting manuals, regulatory filings, and internal procedures. It works well—until a compliance review reveals that the inference endpoint is wide open: a crafted prompt can trigger cross-site scripting or SQL injection, an undocumented API path leaks model metadata, and there is nothing stopping a single client from flooding the endpoint with thousands of requests.
 
-**Key components**
+This quickstart solves that problem. It deploys a complete RAG chatbot on OpenShift AI and secures the model inference endpoints with F5 Distributed Cloud (XC) Web App & API Protection (WAAP). You get a working application you can demonstrate to security, compliance, and risk stakeholders—complete with simulated attack scenarios that show exactly how each protection layer responds to threats from external attackers and internal misuse alike.
 
-- **Red Hat OpenShift AI** – MLOps platform for developing and serving models at scale
-- **F5 Distributed Cloud API Security** – LLM-aware threat detection, schema validation, and sensitive data redaction
-- **Chat Assistant** – AI-powered chat interface
-- **Direct Mode RAG** – Retrieval-Augmented Generation without agent complexity
-- **Integration Blueprint** – Secure model inference across hybrid environments
+While the included demo content targets financial services, the same architecture applies to any industry handling sensitive data—healthcare organizations protecting patient records, government agencies securing citizen-facing AI services, or any enterprise that needs to lock down LLM endpoints before moving to production.
+
+This quickstart allows you to explore security capabilities by:
+
+- Querying financial documents through a RAG-powered chat assistant and seeing grounded, context-aware answers
+- Simulating XSS and SQL injection attacks against the inference endpoint, then enabling a WAF policy to block them
+- Uploading an OpenAPI specification to enforce API contracts and automatically block undocumented shadow APIs
+- Configuring rate limiting to prevent endpoint abuse and ensure fair resource allocation across clients
+- Walking through each scenario end-to-end with the included [security use case guide](docs/securing_model_inference_use_cases.md)
+
+The solution is built on:
+
+- **Red Hat OpenShift AI** – MLOps platform with KServe/vLLM model serving and GPU acceleration
+- **F5 Distributed Cloud API Security** – WAF, API spec enforcement, rate limiting, and sensitive data controls
+- **LLaMA Stack + Streamlit** – RAG chatbot interface backed by PGVector for semantic document retrieval
+- **Helm-based deployment** – One-command install and teardown on any OpenShift cluster
 
 ### Architecture diagrams
 
@@ -208,19 +219,19 @@ oc delete project <NAMESPACE>
 
 ## Document management
 
-Documents can be uploaded directly through the UI.
+Documents can be uploaded directly through the UI for RAG-based retrieval.
 
 **Supported formats:**
-- **PDF documents** — Security policies, manuals, and reports
-- **Text files** — Plain text documents
+- **PDF documents** — Underwriting guidelines, compliance policies, risk assessment reports
+- **Text files** — Regulatory filings, internal procedure documents
 
 Navigate to **Settings → Vector Databases** to create vector databases and upload documents.
 
 ## Tags
 
 - **Title:** Secure model inference with F5 Distributed Cloud API Security
-- **Description:** Protect AI inference endpoints on OpenShift AI with F5 XC WAAP: WAF, API spec enforcement, shadow API prevention, and rate limiting.
-- **Industry:** Financial Services, Healthcare, Government (security-focused)
+- **Description:** Secure AI-powered financial services applications on OpenShift AI with F5 XC WAAP: WAF, API spec enforcement, shadow API prevention, and rate limiting.
+- **Industry:** Financial Services
 - **Product:** OpenShift AI, OpenShift
 - **Use case:** security, API protection, model inference
 - **Contributor org:** F5 / Red Hat
