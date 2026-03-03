@@ -115,52 +115,68 @@ The 70B model is not required for initial testing. Llama-Guard-3-8B is optional.
    ```
 
 3. **Configure and deploy**
+
+   Start by creating your values file:
    ```bash
    cp rag-values.yaml.example rag-values.yaml
-   vim rag-values.yaml   # or your preferred editor
    ```
 
-   **Deploying Models Locally** — In `rag-values.yaml`, enable the following models by setting `enabled: true`:
+   Then choose **one** of the two deployment methods below and edit `rag-values.yaml` accordingly.
 
-   - `llama-3-2-1b-instruct-quantized` (RedHatAI/Llama-3.2-1B-Instruct-quantized.w8a8)
-   - `llama-3-2-3b-instruct` (meta-llama/Llama-3.2-3B-Instruct)
+   ---
 
-       ```yaml
-       global:
-         models:
-           # 1 GPU, ~2–3 GB VRAM (w8a8 quantized)
-           llama-3-2-1b-instruct-quantized:
-             id: RedHatAI/Llama-3.2-1B-Instruct-quantized.w8a8
-             enabled: true
+   #### Option A: Deploy models locally (GPU required)
 
-           # 1 GPU, ~6–8 GB VRAM (FP16)
-           llama-3-2-3b-instruct:
-             id: meta-llama/Llama-3.2-3B-Instruct
-             enabled: true
-       ```
-       > **Note:** If your GPU node has a taint (e.g., `nvidia.com/gpu`), you must specify the corresponding toleration in the model configuration for pods to be scheduled on that node. See `rag-values.yaml` for toleration block examples.
+   Best when you have GPU nodes on your cluster and want to run models entirely on-premises.
 
-   **Deploying a Remote LLM** — In `rag-values.yaml`, enable a remote LLM model by setting `enabled: true` and supplying the URL and API token:
+   In `rag-values.yaml`, enable one or more local models by setting `enabled: true`:
 
-   - `remoteLLM` (<MODEL_ORG>/<MODEL_ID>)
-       
-       ```yaml
-       global:
-         models:
+   ```yaml
+   global:
+     models:
+       # Quantized — 1 GPU, ~2–3 GB VRAM
+       llama-3-2-1b-instruct-quantized:
+         id: RedHatAI/Llama-3.2-1B-Instruct-quantized.w8a8
+         enabled: true
+
+       # Full precision — 1 GPU, ~6–8 GB VRAM
+       llama-3-2-3b-instruct:
+         id: meta-llama/Llama-3.2-3B-Instruct
+         enabled: true
+   ```
+
+   > **Note:** If your GPU node has a taint (e.g., `nvidia.com/gpu`), add the corresponding toleration to the model's config block. See `rag-values.yaml` for examples.
+
+   ---
+
+   #### Option B: Use a remote LLM (no local GPU required)
+
+   Best when you want to connect to an existing model server—such as an external vLLM instance, OpenAI-compatible endpoint, or another cluster's inference service—without provisioning local GPUs.
+
+   In `rag-values.yaml`, enable the remote model and supply the connection details:
+
+   ```yaml
+   global:
+     models:
            # No local GPU required (runs on remote server)
-           remoteLLM:
+       remoteLLM:
              id: <MODEL_ID>
              url: <MODEL_SERVER_URL>
              apiToken: <API_TOKEN>
-             enabled: true
-       ```
+         enabled: true
+   ```
 
+   > **Tip:** You can combine both options—for example, run the embedding model locally while pointing the generation model at a remote server.
+
+   ---
+
+   Once your values file is ready, deploy:
    ```bash
    make install NAMESPACE=<NAMESPACE>
    ```
 
-   The Makefile checks dependencies (helm, oc), creates the namespace, updates Helm dependencies, and installs the chart. Success looks like:
-   ```bash
+   The Makefile validates dependencies (`helm`, `oc`), creates the namespace, and installs the Helm chart. A successful run ends with:
+   ```
    [SUCCESS] rag installed successfully
    ```
 
