@@ -268,12 +268,12 @@ oc delete project <NAMESPACE>
   make validate-config  # Validate configuration values
   ```
 
-- [F5 AI Guardrails (Calypso AI)](https://www.f5.com/products/ai-gateway)
-- [F5 AI Security Operator](https://www.f5.com/products/get-f5?ls=meta#contactsales)
-- [Red Hat OpenShift AI documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed)
-- [KServe](https://kserve.github.io/website/)
-- [vLLM project](https://docs.vllm.ai/)
-- [LLaMA Stack](https://github.com/meta-llama/llama-stack)
+  - [F5 AI Guardrails (Calypso AI)](https://www.f5.com/products/ai-gateway)
+  - [F5 AI Security Operator](https://www.f5.com/products/get-f5?ls=meta#contactsales)
+  - [Red Hat OpenShift AI documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed)
+  - [KServe](https://kserve.github.io/website/)
+  - [vLLM project](https://docs.vllm.ai/)
+  - [LLaMA Stack](https://github.com/meta-llama/llama-stack)
 
 ## Document management
 
