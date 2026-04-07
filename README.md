@@ -246,16 +246,7 @@ The `frontend/` directory contains a full-featured LlamaStack UI with RAG docume
 
 ```bash
 cd frontend
-
-# Replace the version placeholder in pyproject.toml (required for local dev)
-sed -i '' 's/__LLAMASTACK_VERSION__/0.2.23/g' pyproject.toml   # macOS
-# sed -i 's/__LLAMASTACK_VERSION__/0.2.23/g' pyproject.toml    # Linux
-
-# Install dependencies
-uv sync
-
-# Run the app
-uv run streamlit run llama_stack_ui/distribution/ui/app.py --server.port=8501
+./start.sh
 ```
 
 Opens at **http://localhost:8501**. Configure the LLM endpoint in **Settings** within the app.
