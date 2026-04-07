@@ -224,6 +224,8 @@ curl -sk -X POST https://<MODERATOR_HOSTNAME>/openai/llamastack/chat/completions
 #### Step 5: Run the Streamlit chat app
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 streamlit run app.py
 ```
