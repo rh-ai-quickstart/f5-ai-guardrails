@@ -120,7 +120,9 @@ Open **http://localhost:8501** and configure:
 1. **Endpoint URL** — enter `https://<your-hostname>/openai/<your-connection-name>` in the sidebar (e.g., `https://<your-hostname>/openai/llamastack` if you used `llamastack` as the display name)
 2. **API Token** — enter the token you created above
 
-The app auto-discovers available models. Select the model and send a test message to verify connectivity. When a scanner blocks a request, the chat app displays a **"Blocked Message Attempt"** indicator instead of a response.
+The app auto-discovers available models. Select the model and type a message to test the chat (e.g., *"What is the capital of France?"*). At this point no scanners have been added, so all prompts should receive a normal response.
+
+![Streamlit Chat App](images/step0-chatapp.png)
 
 ---
 
