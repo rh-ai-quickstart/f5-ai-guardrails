@@ -290,6 +290,10 @@ Once deployed, F5 AI Guardrails provides defense-in-depth across multiple AI thr
 | **EU AI Act** | Subliminal manipulation, biometric surveillance, emotion recognition in employment | Prompts & Responses |
 | **Restricted Topics** | Unauthorized financial advice, medical diagnosis, legal guidance | Prompts |
 
+**Example: Prompt injection blocked in the chat app**
+
+![Prompt Injection Blocked](docs/images/lab1-task1-chat-prompt-injection_new.png)
+
 ### Custom scanners
 
 | Type | How it works | Example use case |
@@ -297,6 +301,10 @@ Once deployed, F5 AI Guardrails provides defense-in-depth across multiple AI thr
 | **GenAI** | AI-driven analysis of intent and context via natural-language description | Internal financial forecasts, competitor mentions |
 | **Keyword** | Matches specific words or strings | Confidential project names, classified terminology |
 | **RegEx** | Matches regular expression patterns | Employee IDs, internal account numbers |
+
+**Example: Same prompt allowed before custom scanner, blocked after**
+
+![Before and After Custom Scanner](docs/images/lab2-task1-before-after-scanner_new.png)
 
 ### Enforcement modes
 
@@ -307,6 +315,10 @@ Each scanner operates in one of three modes:
 | **Block** | Reject the request — prompt never reaches the LLM | Production enforcement |
 | **Audit** | Allow the request, flag it for review | Initial rollout and tuning |
 | **Redact** | Mask sensitive data and continue the conversation | PII protection without interrupting workflow |
+
+**Example: Scanner details in the Logs UI — full visibility into which scanners fired**
+
+![Scanner Details Log](docs/images/lab1-task1-log-details_new.png)
 
 ### Hands-on labs
 
