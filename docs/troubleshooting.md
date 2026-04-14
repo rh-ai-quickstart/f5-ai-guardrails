@@ -13,6 +13,7 @@ Common failure patterns and fixes encountered during installation and operation.
 | 5 | controller-manager OOMKilled | Default 128Mi memory limit insufficient | [Fix 5](#fix-5-controller-manager-oomkilled) |
 | 6 | "Invalid License" after reinstall | Encryption key mismatch in settings table | [Fix 6](#fix-6-invalid-license-after-reinstall) |
 | 7 | "Internal error" / Keycloak 400 after node outage | PostgreSQL connection pool exhaustion | [Fix 7](#fix-7-keycloak-400--connection-pool-exhaustion) |
+| 8 | Inference pods crash with `Permission denied` | Missing `anyuid` SCC on inference SAs | [Fix 8](#fix-8-inference-pods-permission-denied) |
 
 ---
 
@@ -55,11 +56,15 @@ oc patch deployment controller-manager -n f5-ai-sec --type=json \
 
 ### Fix 6: "Invalid License" after reinstall
 
+Clear all encrypted tables (`setting`, `secret`, `secret_config`) — they hold data encrypted with the old `CAI_MODERATOR_ENCRYPTION_KEY`:
+
 ```bash
 oc exec -n cai-moderator cai-moderator-postgres-cai-postgresql-0 -- \
-  psql -U postgres -d moderator -c "DELETE FROM setting;"
+  psql -U postgres -d moderator -c "DELETE FROM setting; DELETE FROM secret_config; DELETE FROM secret;"
 oc rollout restart deployment/cai-moderator -n cai-moderator
 ```
+
+> **Note:** After this, re-add providers in the UI and assign them to your project. Create new API tokens.
 
 ### Fix 7: Keycloak 400 / connection pool exhaustion
 
@@ -73,4 +78,14 @@ oc rollout restart deployment/cai-moderator -n cai-moderator
 oc exec -n cai-moderator cai-moderator-postgres-cai-postgresql-0 -- \
   psql -U postgres -c "ALTER SYSTEM SET max_connections = 200;"
 oc rollout restart statefulset/cai-moderator-postgres-cai-postgresql -n cai-moderator
+```
+
+### Fix 8: Inference pods Permission denied
+
+Inference pods in `f5-ai-sec-inference` crash with `exec container process: Permission denied`. The container requires `anyuid` SCC but is assigned `restricted-v2` by default.
+
+```bash
+oc adm policy add-scc-to-user anyuid -z f5-ai-sec-inference -n f5-ai-sec-inference
+oc adm policy add-scc-to-user anyuid -z f5-ai-sec-inference-models -n f5-ai-sec-inference
+oc delete pods -n f5-ai-sec-inference --all
 ```

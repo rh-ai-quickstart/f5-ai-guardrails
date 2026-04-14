@@ -64,8 +64,7 @@ oc get storageclass
 | Operator (controller-manager) | `f5-ai-sec` | Manages all F5 AI Security components via Helm charts |
 | Moderator + PostgreSQL | `cai-moderator` | Web UI + API and backing database. CPU + storage; no GPU required |
 | Prefect Server + Worker | `prefect` | Workflow orchestration for scans and red-team runs. CPU-based |
-| AI Guardrails Scanner | `cai-scanner` | Executes inline scans against the LLM endpoint. Requires GPU |
-| AI Red Team Worker | `cai-redteam` | Runs adversarial red-team workloads. Requires GPU |
+| Inference (KubeAI) | `f5-ai-sec-inference` | Unified inference layer for scanner and red-team model serving. Requires GPU |
 
 ---
 
@@ -120,7 +119,8 @@ oc create secret docker-registry regcred \
 ### 2.2 Install operator from OperatorHub
 
 1. OpenShift Console → **OperatorHub** → Search `F5 AI Security Operator`
-2. Install into namespace `f5-ai-sec`
+2. Select **stable** channel, version **0.7.0**
+3. Install into namespace `f5-ai-sec`
 
 **Verification:**
 
@@ -128,12 +128,12 @@ oc create secret docker-registry regcred \
 oc -n f5-ai-sec get pods
 # Expected:
 # NAME                                      READY   STATUS    RESTARTS   AGE
-# controller-manager-6f784bd96d-z6sbh       1/1     Running   1          43s
+# controller-manager-74b5b49794-rpjhf       1/1     Running   0          43s
 
 oc -n f5-ai-sec get csv
 # Expected:
 # NAME                              DISPLAY                    VERSION   PHASE
-# f5-ai-security-operator.v0.4.3   F5 Ai Security Operator    0.4.3     Succeeded
+# f5-ai-security-operator.v0.7.0   F5 AI Security Operator    0.7.0     Succeeded
 
 oc -n f5-ai-sec get crd | grep ai.security.f5.com
 # Expected:
@@ -149,10 +149,13 @@ apiVersion: ai.security.f5.com/v1alpha1
 kind: SecurityOperator
 metadata:
   name: security-operator-demo
-  namespace: f5-ai-sec
+  namespace: cai-moderator
 spec:
   registryAuth:
+    enabled: true
     existingSecret: "regcred"
+    registry: harbor.calypsoai.app
+    secretName: regcred
   postgresql:
     enabled: true
     values:
@@ -169,9 +172,7 @@ spec:
       secrets:
         CAI_MODERATOR_DB_ADMIN_PASSWORD: "pass"
         CAI_MODERATOR_DEFAULT_LICENSE: "<VALID_LICENSE_FROM_F5>"
-  scanner:
-    enabled: true
-  redTeam:
+  inference:
     enabled: true
 ```
 
@@ -189,8 +190,8 @@ spec:
 **Verification:**
 
 ```bash
-oc -n f5-ai-sec get securityoperator
-oc -n f5-ai-sec get securityoperator security-operator-demo -o yaml | sed -n '/status:/,$p'
+oc get securityoperator -A
+oc get securityoperator security-operator-demo -n cai-moderator -o yaml | sed -n '/status:/,$p'
 ```
 
 ---
@@ -202,13 +203,13 @@ oc -n f5-ai-sec get securityoperator security-operator-demo -o yaml | sed -n '/s
 OpenShift's default restricted SCC prevents F5 AI Guardrails components from running. Apply `anyuid` to all relevant service accounts:
 
 ```bash
-oc adm policy add-scc-to-user anyuid -z cai-moderator-sa -n cai-moderator
-oc adm policy add-scc-to-user anyuid -z default           -n cai-moderator
-oc adm policy add-scc-to-user anyuid -z default           -n prefect
-oc adm policy add-scc-to-user anyuid -z prefect-server    -n prefect
-oc adm policy add-scc-to-user anyuid -z prefect-worker    -n prefect
-oc adm policy add-scc-to-user anyuid -z cai-scanner       -n cai-scanner
-oc adm policy add-scc-to-user anyuid -z cai-redteam-worker -n cai-redteam
+oc adm policy add-scc-to-user anyuid -z cai-moderator-sa          -n cai-moderator
+oc adm policy add-scc-to-user anyuid -z default                    -n cai-moderator
+oc adm policy add-scc-to-user anyuid -z default                    -n prefect
+oc adm policy add-scc-to-user anyuid -z prefect-server             -n prefect
+oc adm policy add-scc-to-user anyuid -z prefect-worker             -n prefect
+oc adm policy add-scc-to-user anyuid -z f5-ai-sec-inference        -n f5-ai-sec-inference
+oc adm policy add-scc-to-user anyuid -z f5-ai-sec-inference-models -n f5-ai-sec-inference
 ```
 
 ### 3.2 Force PostgreSQL retry (if stuck at 0/1)
@@ -223,10 +224,9 @@ oc -n cai-moderator scale sts/cai-moderator-postgres-cai-postgresql --replicas=1
 ### 3.3 Restart all components
 
 ```bash
-oc -n cai-moderator rollout restart deploy
-oc -n prefect       rollout restart deploy
-oc -n cai-scanner   rollout restart deploy
-oc -n cai-redteam   rollout restart deploy
+oc -n cai-moderator        rollout restart deploy
+oc -n prefect              rollout restart deploy
+oc -n f5-ai-sec-inference  rollout restart deploy
 ```
 
 ### 3.4 Verify all pods
@@ -239,11 +239,8 @@ oc -n cai-moderator get pods | grep postgres
 # Moderator
 oc -n cai-moderator get pods | grep cai-moderator
 
-# Scanner
-oc -n cai-scanner get pods
-
-# Red Team
-oc -n cai-redteam get pods
+# Inference
+oc -n f5-ai-sec-inference get pods
 
 # Prefect
 oc -n prefect get pods
