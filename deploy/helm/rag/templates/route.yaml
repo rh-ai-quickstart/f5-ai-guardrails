@@ -1,13 +1,13 @@
 kind: Route
 apiVersion: route.openshift.io/v1
 metadata:
-  name: {{ include "f5-ai-security.fullname" . }}
+  name: {{ include "f5-ai-guardrails.fullname" . }}
   labels:
-    {{- include "f5-ai-security.labels" . | nindent 4 }}
+    {{- include "f5-ai-guardrails.labels" . | nindent 4 }}
 spec:
   to:
     kind: Service
-    name: {{ include "f5-ai-security.fullname" . }}
+    name: {{ include "f5-ai-guardrails.fullname" . }}
     weight: 100
   port:
     targetPort: {{ .Values.service.port }}

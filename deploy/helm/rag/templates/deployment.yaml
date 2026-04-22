@@ -1,14 +1,14 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "f5-ai-security.fullname" . }}
+  name: {{ include "f5-ai-guardrails.fullname" . }}
   labels:
-    {{- include "f5-ai-security.labels" . | nindent 4 }}
+    {{- include "f5-ai-guardrails.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "f5-ai-security.selectorLabels" . | nindent 6 }}
+      {{- include "f5-ai-guardrails.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -16,7 +16,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "f5-ai-security.labels" . | nindent 8 }}
+        {{- include "f5-ai-guardrails.labels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -25,7 +25,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "f5-ai-security.serviceAccountName" . }}
+      serviceAccountName: {{ include "f5-ai-guardrails.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -40,7 +40,7 @@ spec:
             - name: RAG_QUESTION_SUGGESTIONS
               valueFrom:
                 configMapKeyRef:
-                  name: {{ include "f5-ai-security.fullname" . }}-suggested-questions
+                  name: {{ include "f5-ai-guardrails.fullname" . }}-suggested-questions
                   key: RAG_QUESTION_SUGGESTIONS
             {{- end }}
           ports:

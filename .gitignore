@@ -185,6 +185,10 @@ deploy/helm/secrets
 deploy/helm/rag-values.yaml
 deploy/helm/rag-values.yaml.old
 
+# Local F5 guardrails install (secrets; use *.env.example in repo when present)
+scripts/f5-guardrails-install.env
+scripts/last-install.log
+
 # Streamlit chat history (generated at runtime)
 chat_history.json
 

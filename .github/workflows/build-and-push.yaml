@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-and-push:
-    if: github.repository == 'rh-ai-quickstart/F5-API-Security'
+    if: github.repository == 'rh-ai-quickstart/f5-ai-guardrails'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -30,14 +30,14 @@ jobs:
           f5_version=$(grep '^version:' deploy/helm/rag/Chart.yaml | awk '{print $2}')
           echo "f5_tag=$f5_version" >> $GITHUB_OUTPUT
 
-      - name: Build and push f5-security-ui
+      - name: Build and push f5-ai-guardrails
         uses: docker/build-push-action@v5
         with:
           context: frontend
           file: frontend/Containerfile
           push: true
           tags: |
-            quay.io/rh-ai-quickstart/f5-security-ui:${{ steps.version.outputs.f5_tag }}
-            quay.io/rh-ai-quickstart/f5-security-ui:latest
+            quay.io/rh-ai-quickstart/f5-ai-guardrails:${{ steps.version.outputs.f5_tag }}
+            quay.io/rh-ai-quickstart/f5-ai-guardrails:latest
           build-args: |
             LLAMASTACK_VERSION=0.2.23

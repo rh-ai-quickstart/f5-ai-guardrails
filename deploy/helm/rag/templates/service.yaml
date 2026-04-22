@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "f5-ai-security.fullname" . }}
+  name: {{ include "f5-ai-guardrails.fullname" . }}
   labels:
-    {{- include "f5-ai-security.labels" . | nindent 4 }}
+    {{- include "f5-ai-guardrails.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -12,4 +12,4 @@ spec:
       protocol: TCP
       name: http
   selector:
-    {{- include "f5-ai-security.selectorLabels" . | nindent 4 }}
+    {{- include "f5-ai-guardrails.selectorLabels" . | nindent 4 }}

@@ -169,7 +169,7 @@ llama-stack:
 replicaCount: 1
 
 image:
-  repository: "quay.io/rh-ai-quickstart/f5-security-ui"
+  repository: "quay.io/rh-ai-quickstart/f5-ai-guardrails"
   pullPolicy: "Always"
 
 env:
