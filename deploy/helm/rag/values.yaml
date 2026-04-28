@@ -35,14 +35,22 @@ env:
     value: 'rag_password'
   - name: PGVECTOR_DB
     value: 'rag_blueprint'
+  # Guardrail URL + API token persisted by the UI to this path (emptyDir /data). Lost if the pod is replaced;
+  # use a PVC on /data for values that must survive rescheduling.
+  - name: F5_GUARDRAILS_STATE_FILE
+    value: /data/guardrails_state.json
 
 volumes:
   - emptyDir: {}
     name: dot-streamlit
+  - emptyDir: {}
+    name: guardrails-data
 
 volumeMounts:
   - mountPath: /.streamlit
     name: dot-streamlit
+  - mountPath: /data
+    name: guardrails-data
 
 # Common model values for llm-service and llama-stack
 # See format in https://github.com/rh-ai-quickstart/ai-architecture-charts/blob/main/llm-service/helm/values.yaml

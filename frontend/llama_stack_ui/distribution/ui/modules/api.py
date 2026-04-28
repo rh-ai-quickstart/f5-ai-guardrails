@@ -12,11 +12,33 @@ import httpx
 from llama_stack_client import LlamaStackClient
 from openai import OpenAI
 
+# Timeouts for cluster / large model lists
+_HTTPX_TIMEOUT = httpx.Timeout(120.0, connect=30.0)
+
+
+def _httpx_client_for_url(url: str) -> httpx.Client | None:
+    """
+    OpenShift edge routes are HTTPS; http:// to *.apps... often returns HTML/redirects.
+    Use relaxed TLS and redirects for public cluster URLs. Keep defaults for local dev.
+    """
+    u = (url or "").lower().rstrip("/")
+    if "localhost" in u or "127.0.0.1" in u or u.startswith("http://[::1]"):
+        return httpx.Client(follow_redirects=True, timeout=_HTTPX_TIMEOUT)
+    if u.startswith("http://llamastack") and ".apps." not in u:
+        return httpx.Client(follow_redirects=True, timeout=_HTTPX_TIMEOUT)
+    if u.startswith("http://") or u.startswith("https://"):
+        return httpx.Client(verify=False, follow_redirects=True, timeout=_HTTPX_TIMEOUT)
+    return None
+
+
 class LlamaStackApi:
     def __init__(self):
-        self.client = LlamaStackClient(
-            base_url=os.environ.get("LLAMA_STACK_ENDPOINT", "http://localhost:8321")
-        )
+        base = os.environ.get("LLAMA_STACK_ENDPOINT", "http://localhost:8321")
+        hx = _httpx_client_for_url(base)
+        if hx is not None:
+            self.client = LlamaStackClient(base_url=base, http_client=hx)
+        else:
+            self.client = LlamaStackClient(base_url=base)
 
     def run_scoring(self, row, scoring_function_ids: list[str], scoring_params: Optional[dict]):
         """Run scoring on a single row"""
@@ -29,14 +51,15 @@ class LlamaStackApi:
         return OpenAI(
             base_url=base_url,
             api_key=api_token,
-            http_client=httpx.Client(verify=False),
+            http_client=httpx.Client(verify=False, follow_redirects=True, timeout=_HTTPX_TIMEOUT),
         )
 
     def create_client_with_url(self, base_url: str, api_token: str = "") -> LlamaStackClient:
         """Create a LlamaStackClient with custom base URL and optional API token"""
-        kwargs = {"base_url": base_url}
-        if base_url.startswith("https://"):
-            kwargs["http_client"] = httpx.Client(verify=False)
+        kwargs: dict = {"base_url": base_url}
+        hx = _httpx_client_for_url(base_url)
+        if hx is not None:
+            kwargs["http_client"] = hx
         if api_token:
             kwargs["api_key"] = api_token
         return LlamaStackClient(**kwargs)

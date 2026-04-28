@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Streamlit (frontend)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "streamlit",
+      "args": [
+        "run",
+        "llama_stack_ui/distribution/ui/app.py",
+        "--server.port=8501",
+        "--server.runOnSave",
+        "true"
+      ],
+      "cwd": "${workspaceFolder}/frontend",
+      "env": {
+        "LLAMA_STACK_ENDPOINT": "http://127.0.0.1:8321"
+      },
+      "justMyCode": false
+    }
+  ]
+}
