@@ -31,6 +31,12 @@ TOLERATIONS_TEMPLATE=[{"key":"$(1)","effect":"NoSchedule","operator":"Exists"}]
 VALUES_FILE := rag-values.yaml
 VALUES_EXAMPLE := rag-values.yaml.example
 
+# Repo root (this file is deploy/helm/Makefile) and frontend for local UI
+REPO_ROOT := $(abspath $(dir $(abspath $(lastword $(MAKEFILE_LIST))))/../..)
+FRONTEND_DIR := $(REPO_ROOT)/frontend
+UI_PIDFILE := $(REPO_ROOT)/.f5-guardrails-ui-local.pid
+UI_LOGFILE := $(REPO_ROOT)/.f5-guardrails-ui-local.log
+
 # Helper function to check and create values file
 define check_values_file
 	@if [ ! -f "$(VALUES_FILE)" ]; then \
@@ -152,6 +158,10 @@ help: ## Show this help message
 	@echo -e "  validate-config - Validate configuration values"
 	@echo -e "  monitor       - Monitor deployment status"
 	@echo -e "  config        - Show current configuration"
+	@echo -e "  deploy-ui-local  - Start Streamlit UI in background (alias: ui-local)"
+	@echo -e "  undeploy-ui-local - Stop background UI (pid file in repo root)"
+	@echo -e "  deploy-ui-local-foreground - Run UI in foreground (blocks terminal; same as direct script)"
+	@echo -e "                    Optional: NAMESPACE=... PORT_FORWARD=1 (see frontend/dev-on-cluster.sh)"
 	@echo -e ""
 	@echo -e "$(GREEN)F5 XC Targets:$(NC)"
 	@echo -e "  f5-deploy     - Deploy F5 XC Customer Edge mesh (Ansible)"
@@ -481,6 +491,46 @@ delete-jobs: ## Delete all jobs in the namespace
 	@echo -e "$(BLUE)[INFO]$(NC) Deleting all jobs in namespace $(NAMESPACE)..."
 	@oc delete jobs -n $(NAMESPACE) --all ||:
 	@echo -e "$(GREEN)[SUCCESS]$(NC) Job deletion completed"
+
+# --- Local Streamlit UI (runs frontend/dev-on-cluster.sh) ---
+.PHONY: deploy-ui-local ui-local deploy-ui-local-foreground undeploy-ui-local
+
+deploy-ui-local ui-local: ## Start Streamlit at http://localhost:8501 in background (nohup + pid file)
+	@if [ ! -f "$(FRONTEND_DIR)/dev-on-cluster.sh" ]; then \
+		echo -e "$(RED)[ERROR]$(NC) Expected $(FRONTEND_DIR)/dev-on-cluster.sh"; exit 1; \
+	fi
+	@if [ -f "$(UI_PIDFILE)" ] && kill -0 "$$(cat "$(UI_PIDFILE)" 2>/dev/null)" 2>/dev/null; then \
+		echo -e "$(RED)[ERROR]$(NC) Local UI already running (PID $$(cat "$(UI_PIDFILE)")). Run: make undeploy-ui-local"; \
+		exit 1; \
+	fi
+	@rm -f "$(UI_PIDFILE)" 2>/dev/null; \
+		cd "$(FRONTEND_DIR)" && nohup bash ./dev-on-cluster.sh >>"$(UI_LOGFILE)" 2>&1 & echo $$! > "$(UI_PIDFILE)"; \
+		echo -e "$(GREEN)[SUCCESS]$(NC) Local UI in background: http://localhost:8501"; \
+		echo -e "  PID: $$(cat "$(UI_PIDFILE)")  Log: $(UI_LOGFILE)"; \
+		echo -e "  Stop with: $(BLUE)make undeploy-ui-local$(NC)";
+
+undeploy-ui-local: ## Stop background local UI started by deploy-ui-local
+	@if [ ! -f "$(UI_PIDFILE)" ]; then \
+		echo "No local UI pid file; nothing to stop."; \
+		exit 0; \
+	fi; \
+	PID=$$(cat "$(UI_PIDFILE)"); \
+	if ! kill -0 "$$PID" 2>/dev/null; then \
+		echo "Removing stale pid $$PID"; \
+		rm -f "$(UI_PIDFILE)"; \
+		exit 0; \
+	fi; \
+	kill "$$PID" 2>/dev/null || true; \
+	sleep 1; \
+	if kill -0 "$$PID" 2>/dev/null; then kill -9 "$$PID" 2>/dev/null || true; fi; \
+	rm -f "$(UI_PIDFILE)"; \
+	echo "Stopped local UI (was PID $$PID)."
+
+deploy-ui-local-foreground: ## Run Streamlit in foreground (blocks; Ctrl+C to stop)
+	@if [ ! -f "$(FRONTEND_DIR)/dev-on-cluster.sh" ]; then \
+		echo -e "$(RED)[ERROR]$(NC) Expected $(FRONTEND_DIR)/dev-on-cluster.sh"; exit 1; \
+	fi
+	@cd "$(FRONTEND_DIR)" && exec bash ./dev-on-cluster.sh
 
 # --- F5 XC Deployment (Ansible) ---
 ANSIBLE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))../ansible

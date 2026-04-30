@@ -127,3 +127,25 @@ def get_suggestions_for_databases(selected_dbs, all_vector_dbs):
                 combined_suggestions.append((question, db_name))
     
     return combined_suggestions
+
+
+def format_api_connection_error(exc: Exception) -> str:
+    """Narrow large HTML bodies (e.g. OpenShift error pages) to a short, actionable message."""
+    name = type(exc).__name__
+    text = f"{name}: {exc}"
+    tlow = text.lower()
+    if (
+        "<html" in tlow
+        or "<style" in tlow
+        or "application is not available" in tlow
+        or "router did not respond" in tlow
+    ):
+        ep = os.environ.get("LLAMA_STACK_ENDPOINT", "http://localhost:8321")
+        return (
+            f"LlamaStack URL ({ep}) returned a web error page (HTML) instead of JSON. "
+            "For OpenShift routes (*.apps...), use **https://** (edge TLS) and ensure pods are ready. "
+            f"Test: `curl -sk {ep.rstrip('/')}/v1/models` (expect JSON). Error type: {name}"
+        )
+    if len(text) > 1200:
+        return text[:1200] + "…"
+    return text

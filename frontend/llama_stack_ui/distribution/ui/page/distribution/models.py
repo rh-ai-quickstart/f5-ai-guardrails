@@ -8,6 +8,8 @@ import pandas as pd
 import streamlit as st
 
 from llama_stack_ui.distribution.ui.modules.api import llama_stack_api
+from llama_stack_ui.distribution.ui.modules.guardrails_storage import write_state
+from llama_stack_ui.distribution.ui.modules.utils import format_api_connection_error
 
 
 def fetch_models():
@@ -30,7 +32,7 @@ def fetch_models():
     except Exception as e:
         st.session_state["models_loading"] = False
         st.session_state["models_list"] = []
-        st.session_state["models_error"] = f"Connection failed: {type(e).__name__}: {e}"
+        st.session_state["models_error"] = format_api_connection_error(e)
         st.session_state["connection_status"] = "error"
 
 
@@ -42,11 +44,9 @@ def models():
     """
     st.header("Settings")
 
-    # Initialize session state
-    if "guardrail_url" not in st.session_state:
-        st.session_state["guardrail_url"] = ""
-    if "api_token" not in st.session_state:
-        st.session_state["api_token"] = ""
+    # Session guardrail keys: hydrated in `app._init_guardrails_from_persisted` (file + optional env)
+    st.session_state.setdefault("guardrail_url", "")
+    st.session_state.setdefault("api_token", "")
     if "models_list" not in st.session_state:
         st.session_state["models_list"] = []
     if "models_loading" not in st.session_state:
@@ -60,7 +60,7 @@ def models():
 
     # --- F5 AI Guardrails ---
     st.subheader("F5 AI Guardrails")
-    st.caption("When configured, chat requests are routed through the guardrail proxy for policy scanning.")
+    st.caption("When both fields are set, chat is scanned by your F5 AI Guardrails policies.")
 
     guardrail_url = st.text_input(
         "Endpoint URL",
@@ -77,11 +77,19 @@ def models():
         key="api_token_input",
     )
 
-    # Update session state
+    # Update session state and persist
+    changed = False
     if guardrail_url != st.session_state["guardrail_url"]:
         st.session_state["guardrail_url"] = guardrail_url
+        changed = True
     if api_token != st.session_state["api_token"]:
         st.session_state["api_token"] = api_token
+        changed = True
+    if changed:
+        try:
+            write_state(st.session_state["guardrail_url"], st.session_state["api_token"])
+        except OSError:
+            pass
 
     # Auto-fetch models on first load
     if not st.session_state["models_fetched"] and not st.session_state["models_loading"]:

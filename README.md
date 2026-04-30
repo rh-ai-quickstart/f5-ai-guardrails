@@ -53,23 +53,25 @@ The solution is built on:
 
 ### Architecture
 
-![RAG Architecture with F5 AI Guardrails](docs/images/rag-architecture-f5ai.png)
+RAG Architecture with F5 AI Guardrails
 
 **Data flow:** The client sends a chat request to the F5 AI Guardrails Moderator endpoint. The Moderator passes the prompt through the Guardrails engine, which evaluates it against active policies (prompt injection, PII, toxicity, topic). If the prompt passes, it is forwarded to LlamaStack, which routes it to the vLLM model. The model response is then scanned again on the way back. If either the prompt or response violates a policy, the request is blocked and the client receives an error.
 
-| Layer/Component | Technology | Purpose |
-|-----------------|------------|---------|
-| **Orchestration** | OpenShift AI | Container orchestration and GPU acceleration |
-| **AI Security** | F5 AI Guardrails (Moderator + Guardrails) | Prompt/response inspection, policy enforcement |
-| **Framework** | LLaMA Stack | AI application building blocks, OpenAI-compatible API |
-| **UI Layer** | Streamlit | Chat interface for interactive demos |
-| **LLM** | Llama-3.2-1B-Instruct (quantized) | Generates contextual responses |
-| **Embedding** | all-MiniLM-L6-v2 | Text to vector embeddings |
-| **Vector DB** | PostgreSQL + PGVector | Stores embeddings and semantic search |
-| **Policy Engine** | Calypso AI Guardrails | Executes guardrail policies (injection, PII, toxicity, topic) |
-| **Red Team** | Calypso AI Red Team | Adversarial testing and vulnerability assessment |
-| **Database** | PostgreSQL | Stores settings, policies, and scan results |
-| **Workflow** | Prefect | Orchestrates scan and red-team jobs |
+
+| Layer/Component   | Technology                                | Purpose                                                       |
+| ----------------- | ----------------------------------------- | ------------------------------------------------------------- |
+| **Orchestration** | OpenShift AI                              | Container orchestration and GPU acceleration                  |
+| **AI Security**   | F5 AI Guardrails (Moderator + Guardrails) | Prompt/response inspection, policy enforcement                |
+| **Framework**     | LLaMA Stack                               | AI application building blocks, OpenAI-compatible API         |
+| **UI Layer**      | Streamlit                                 | Chat interface for interactive demos                          |
+| **LLM**           | Llama-3.2-1B-Instruct (quantized)         | Generates contextual responses                                |
+| **Embedding**     | all-MiniLM-L6-v2                          | Text to vector embeddings                                     |
+| **Vector DB**     | PostgreSQL + PGVector                     | Stores embeddings and semantic search                         |
+| **Policy Engine** | Calypso AI Guardrails                     | Executes guardrail policies (injection, PII, toxicity, topic) |
+| **Red Team**      | Calypso AI Red Team                       | Adversarial testing and vulnerability assessment              |
+| **Database**      | PostgreSQL                                | Stores settings, policies, and scan results                   |
+| **Workflow**      | Prefect                                   | Orchestrates scan and red-team jobs                           |
+
 
 ## Requirements
 
@@ -87,14 +89,12 @@ The solution is built on:
 - Red Hat OpenShift AI 2.16+ (tested with 2.22)
 - Helm CLI
 - F5 AI Security Operator license and registry credentials (contact [F5 Sales](https://www.f5.com/products/get-f5?ls=meta#contactsales))
-
 - Optional: [huggingface-cli](https://huggingface.co/docs/huggingface_hub/guides/cli), [Hugging Face token](https://huggingface.co/settings/tokens), [jq](https://stedolan.github.io/jq/) for example scripts
 
 ### Required user permissions
 
 - Cluster admin for F5 AI Security Operator installation and SCC configuration
 - Regular user sufficient for RAG stack deployment
-
 
 ## Deploy
 
@@ -108,78 +108,38 @@ The solution is built on:
 
 ### Supported models
 
-| Function | Model Name | Hardware | Notes |
-|----------|------------|----------|-------|
-| Embedding | `all-MiniLM-L6-v2` | CPU/GPU/HPU | — |
+
+| Function   | Model Name                                      | Hardware            | Notes                             |
+| ---------- | ----------------------------------------------- | ------------------- | --------------------------------- |
+| Embedding  | `all-MiniLM-L6-v2`                              | CPU/GPU/HPU         | —                                 |
 | Generation | `RedHatAI/Llama-3.2-1B-Instruct-quantized.w8a8` | 1 GPU, ~2-3 GB VRAM | Default; quantized for efficiency |
-| Generation | `meta-llama/Llama-3.2-3B-Instruct` | 1 GPU, ~6-8 GB VRAM | Full precision |
-| Scanner | `cai-phi-4` | 1 GPU, 24 GB VRAM | Policy evaluation model |
-| Red Team | `cai-mistral-nemo` | 1 GPU, 48 GB VRAM | Adversarial testing model |
+| Generation | `meta-llama/Llama-3.2-3B-Instruct`              | 1 GPU, ~6-8 GB VRAM | Full precision                    |
+| Scanner    | `cai-phi-4`                                     | 1 GPU, 24 GB VRAM   | Policy evaluation model           |
+| Red Team   | `cai-mistral-nemo`                              | 1 GPU, 48 GB VRAM   | Adversarial testing model         |
+
 
 ### Installation steps
 
 #### Step 1: Deploy the RAG stack
 
 1. **Log in to OpenShift**
-   ```bash
+  ```bash
    oc login --token=<your_sha256_token> --server=<cluster-api-endpoint>
-   ```
-
+  ```
 2. **Clone and go to the deployment directory**
-   ```bash
+  ```bash
    git clone https://github.com/rh-ai-quickstart/f5-ai-guardrails.git
    cd f5-ai-guardrails/deploy/helm
-   ```
-
+  ```
 3. **Configure and deploy**
-
-   Create your values file:
-   ```bash
-   cp rag-values.yaml.example rag-values.yaml
-   ```
-
+  Create your values file:
    Edit `rag-values.yaml` to enable one or more models:
-
-   ```yaml
-   global:
-     models:
-       # Quantized — 1 GPU, ~2-3 GB VRAM
-       llama-3-2-1b-instruct-quantized:
-         id: RedHatAI/Llama-3.2-1B-Instruct-quantized.w8a8
-         enabled: true
-   ```
-
    Set your target namespace and deploy:
-   ```bash
-   export NAMESPACE=<NAMESPACE>   # e.g., f5-ai-security
-   make install NAMESPACE=$NAMESPACE
-   ```
-
    A successful run ends with:
-   ```
-   [SUCCESS] rag installed successfully
-   ```
-
 4. **Verify the RAG stack**
-
-   Get the LlamaStack route URL (uses `NAMESPACE` from the previous step):
-   ```bash
-   LLAMASTACK_URL=$(oc get route llamastack-http -n $NAMESPACE -o jsonpath='{.spec.host}')
-   echo "LlamaStack endpoint: http://$LLAMASTACK_URL"
-   ```
-
+  Get the LlamaStack route URL (uses `NAMESPACE` from the previous step):
    List available models:
-   ```bash
-   curl -sS http://$LLAMASTACK_URL/v1/models | jq
-   ```
-
    Test chat completion:
-   ```bash
-   curl -sS http://$LLAMASTACK_URL/v1/openai/v1/chat/completions \
-     -H "Content-Type: application/json" \
-     -d '{"model": "<MODEL_ID>", "messages": [{"role": "user", "content": "Say hello in one sentence."}], "max_tokens": 64}' | jq
-   ```
-
    Replace `<MODEL_ID>` with the model identifier from the list models output (e.g., `llama-3-2-1b-instruct-quantized/RedHatAI/Llama-3.2-1B-Instruct-quantized.w8a8`).
 
 #### Step 2: Deploy F5 AI Guardrails
@@ -187,6 +147,7 @@ The solution is built on:
 Follow the complete installation guide: **[Installing F5 AI Guardrails on OpenShift](docs/installing_f5_ai_guardrails.md)**
 
 This guide covers:
+
 - Node Feature Discovery and GPU Operator prerequisites
 - F5 AI Security Operator installation via OperatorHub
 - SecurityOperator custom resource configuration
@@ -234,7 +195,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Opens at **http://localhost:8501**. Enter your API token and the Moderator endpoint URL in the sidebar.
+Opens at **[http://localhost:8501](http://localhost:8501)**. Enter your API token and the Moderator endpoint URL in the sidebar.
 
 **Application access (frontend):** The full-featured RAG frontend is also available. Get the route with `oc get route -n <NAMESPACE>`, open the URL in a browser, and configure the LLM endpoint settings in the web UI.
 
@@ -243,6 +204,7 @@ Opens at **http://localhost:8501**. Enter your API token and the Moderator endpo
 The `frontend/` directory contains a full-featured LlamaStack UI with RAG document management, model selection, and sampling parameters.
 
 **Prerequisites:**
+
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) package manager
 
@@ -253,24 +215,29 @@ cd frontend
 LLAMA_STACK_ENDPOINT=http://$LLAMASTACK_URL ./start.sh
 ```
 
+From `deploy/helm`, `make deploy-ui-local` (or `ui-local`) starts the UI in the **background**; `make undeploy-ui-local` stops it. Pid/log: `.f5-guardrails-ui-local.*` in the repo root. `make deploy-ui-local-foreground` runs in the terminal. Optional env: `NAMESPACE`, `PORT_FORWARD=1` (see `frontend/dev-on-cluster.sh`).
+
 The `start.sh` script handles virtual environment setup (`uv sync`), dependency installation, and launching Streamlit. If `LLAMA_STACK_ENDPOINT` is not set, the script auto-detects the LlamaStack route from OpenShift (requires `oc` login).
 
-Opens at **http://localhost:8501**.
+Opens at **[http://localhost:8501](http://localhost:8501)**.
 
 **Configuring F5 AI Guardrails:**
 
 After completing the [AI Guardrails Use Case Guide](docs/ai_guardrails_use_cases.md) (Step 0: Configure AI Guardrails), you will have a Moderator endpoint and API token. To route chat through F5 AI Guardrails for policy scanning, go to **Settings** in the app and configure:
 
-| Field | Value |
-|-------|-------|
-| **Endpoint URL** | `https://<MODERATOR_HOSTNAME>/openai/<connection-name>` |
-| **API Token** | Bearer token created in the Moderator UI (**API tokens** page) |
+
+| Field            | Value                                                          |
+| ---------------- | -------------------------------------------------------------- |
+| **Endpoint URL** | `https://<MODERATOR_HOSTNAME>/openai/<connection-name>`        |
+| **API Token**    | Bearer token created in the Moderator UI (**API tokens** page) |
+
 
 When both fields are set, chat requests are routed through the guardrail proxy. Models and vector databases are always fetched from the direct LlamaStack endpoint.
 
 > **Note:** The `pyproject.toml` uses `__LLAMASTACK_VERSION__` as a placeholder that is normally substituted during container builds (see `Containerfile`). For local development, you must replace it manually with the target version (currently `0.6.0`). Do not commit this change — it will break the container build pipeline.
 
 **Features:**
+
 - **Chat** — Multi-turn conversation with model selection, system prompt, and sampling parameters (temperature, top_p, max_tokens)
 - **Settings** — Configure optional F5 AI Guardrails endpoint and API token for policy scanning
 - **RAG** — Upload documents, create vector database collections, and query with retrieval-augmented generation
@@ -282,51 +249,59 @@ Once deployed, F5 AI Guardrails provides defense-in-depth across multiple AI thr
 
 ### Out-of-the-box guardrail packages
 
-| Package | What it catches | Scope |
-|---------|----------------|-------|
-| **Prompt Injection** | Instruction-override attacks, DAN prompts, system prompt extraction, obfuscation | Prompts |
-| **PII** | SSNs, credit cards, emails, phone numbers, data exfiltration requests | Prompts & Responses |
-| **EU AI Act** | Subliminal manipulation, biometric surveillance, emotion recognition in employment | Prompts & Responses |
-| **Restricted Topics** | Unauthorized financial advice, medical diagnosis, legal guidance | Prompts |
+
+| Package               | What it catches                                                                    | Scope               |
+| --------------------- | ---------------------------------------------------------------------------------- | ------------------- |
+| **Prompt Injection**  | Instruction-override attacks, DAN prompts, system prompt extraction, obfuscation   | Prompts             |
+| **PII**               | SSNs, credit cards, emails, phone numbers, data exfiltration requests              | Prompts & Responses |
+| **EU AI Act**         | Subliminal manipulation, biometric surveillance, emotion recognition in employment | Prompts & Responses |
+| **Restricted Topics** | Unauthorized financial advice, medical diagnosis, legal guidance                   | Prompts             |
+
 
 **Example: Prompt injection blocked in the chat app**
 
-![Prompt Injection Blocked](docs/images/lab1-task1-chat-prompt-injection_new.png)
+Prompt Injection Blocked
 
 ### Custom guardrails
 
-| Type | How it works | Example use case |
-|------|-------------|------------------|
-| **GenAI** | AI-driven analysis of intent and context via natural-language description | Internal financial forecasts, competitor mentions |
-| **Keyword** | Matches specific words or strings | Confidential project names, classified terminology |
-| **RegEx** | Matches regular expression patterns | Employee IDs, internal account numbers |
+
+| Type        | How it works                                                              | Example use case                                   |
+| ----------- | ------------------------------------------------------------------------- | -------------------------------------------------- |
+| **GenAI**   | AI-driven analysis of intent and context via natural-language description | Internal financial forecasts, competitor mentions  |
+| **Keyword** | Matches specific words or strings                                         | Confidential project names, classified terminology |
+| **RegEx**   | Matches regular expression patterns                                       | Employee IDs, internal account numbers             |
+
 
 **Example: Same prompt allowed before custom guardrail, blocked after**
 
-![Before and After Custom Guardrail](docs/images/lab2-task1-before-after-scanner_new.png)
+Before and After Custom Guardrail
 
 ### Enforcement modes
 
 Each guardrail operates in one of three modes:
 
-| Mode | Behavior | When to use |
-|------|----------|-------------|
-| **Block** | Reject the request — prompt never reaches the LLM | Production enforcement |
-| **Audit** | Allow the request, flag it for review | Initial rollout and tuning |
+
+| Mode       | Behavior                                          | When to use                                  |
+| ---------- | ------------------------------------------------- | -------------------------------------------- |
+| **Block**  | Reject the request — prompt never reaches the LLM | Production enforcement                       |
+| **Audit**  | Allow the request, flag it for review             | Initial rollout and tuning                   |
 | **Redact** | Mask sensitive data and continue the conversation | PII protection without interrupting workflow |
+
 
 **Example: Guardrail details in the Logs UI — full visibility into which guardrails fired**
 
-![Guardrail Details Log](docs/images/lab1-task1-log-details_new.png)
+Guardrail Details Log
 
 ### Hands-on labs
 
 The **[AI Guardrails Use Case Guide](docs/ai_guardrails_use_cases.md)** provides step-by-step labs to configure, test, and observe these protections:
 
-| Lab | What you will do |
-|-----|-----------------|
-| **Lab 1 — Prompt and Response Scanning** | Add OOTB guardrail packages, test safe and unsafe prompts, observe blocked events in the Logs dashboard |
-| **Lab 2 — Creating Custom Guardrails** | Build GenAI, Keyword, and RegEx guardrails tailored to your organization, verify they block matching content |
+
+| Lab                                      | What you will do                                                                                             |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **Lab 1 — Prompt and Response Scanning** | Add OOTB guardrail packages, test safe and unsafe prompts, observe blocked events in the Logs dashboard      |
+| **Lab 2 — Creating Custom Guardrails**   | Build GenAI, Keyword, and RegEx guardrails tailored to your organization, verify they block matching content |
+
 
 The labs use the Streamlit chat app and the Moderator UI, with optional `curl` commands for scripted testing. The use case guide is updated as new guardrail capabilities are released.
 
@@ -362,7 +337,6 @@ oc delete project <NAMESPACE>
 ## References
 
 - **Make commands:**
-
   ```bash
   make help             # Show all available commands
   make install          # Deploy the RAG application
@@ -372,8 +346,9 @@ oc delete project <NAMESPACE>
   make monitor          # Monitor deployment status
   make status           # Check deployment status
   make validate-config  # Validate configuration values
+  make deploy-ui-local   # Local UI in background (use make undeploy-ui-local to stop)
+  make undeploy-ui-local
   ```
-
   - [F5 AI Guardrails (Calypso AI)](https://www.f5.com/products/ai-gateway)
   - [F5 AI Security Operator](https://www.f5.com/products/get-f5?ls=meta#contactsales)
   - [Red Hat OpenShift AI documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed)
@@ -386,6 +361,7 @@ oc delete project <NAMESPACE>
 Documents can be uploaded directly through the UI for RAG-based retrieval.
 
 **Supported formats:**
+
 - **PDF documents** — Underwriting guidelines, compliance policies, risk assessment reports
 - **Text files** — Regulatory filings, internal procedure documents
 
@@ -397,3 +373,4 @@ Navigate to **Settings → Vector Databases** in the frontend to create vector d
 - **Industry:** Banking and securities
 - **Product:** OpenShift AI, OpenShift, F5 AI Guardrails
 - **Contributor org:** F5 / Red Hat
+

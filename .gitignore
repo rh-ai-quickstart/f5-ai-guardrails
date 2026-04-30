@@ -1,6 +1,9 @@
 .venv
 venv
-.vscode
+# Commit shared dev configs; ignore the rest
+.vscode/*
+!.vscode/launch.json
+!.vscode/settings.json
 # Byte-compiled / optimized / DLL files
 **__pycache__**
 *.py[cod]
@@ -189,8 +192,16 @@ deploy/helm/rag-values.yaml.old
 scripts/f5-guardrails-install.env
 scripts/last-install.log
 
+# Personal cluster image build (Kaniko); keep copies locally, do not commit
+scripts/build-image-on-cluster.sh
+deploy/build/kaniko-job.yaml
+
 # Streamlit chat history (generated at runtime)
 chat_history.json
+
+# Local UI background process (make deploy-ui-local / undeploy-ui-local)
+.f5-guardrails-ui-local.pid
+.f5-guardrails-ui-local.log
 
 # Presentation files
 *.pptx
