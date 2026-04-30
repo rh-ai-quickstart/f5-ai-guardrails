@@ -27,6 +27,9 @@ fi
 export LLAMA_STACK_ENDPOINT="${LLAMA_STACK_ENDPOINT:-http://llamastack:8321}"
 echo "[INFO] LlamaStack endpoint: $LLAMA_STACK_ENDPOINT"
 
+# Optional API token for LlamaStack (used by the dual-panel comparison view)
+export LLAMA_STACK_API_TOKEN="${LLAMA_STACK_API_TOKEN:-}"
+
 # Ensure project dependencies and the local venv exist.
 uv sync
 

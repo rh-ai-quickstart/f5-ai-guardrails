@@ -20,6 +20,8 @@ def _init_guardrails_from_persisted():
     tok = (data.get("api_token", "") or "").strip() or os.environ.get("F5_GUARDRAIL_API_TOKEN", "").strip()
     st.session_state["guardrail_url"] = gurl
     st.session_state["api_token"] = tok
+    st.session_state.setdefault("ls_endpoint_url", os.environ.get("LLAMA_STACK_ENDPOINT", "http://localhost:8321"))
+    st.session_state.setdefault("ls_api_token", os.environ.get("LLAMA_STACK_API_TOKEN", ""))
     st.session_state[_INIT_KEY] = True
 
 
