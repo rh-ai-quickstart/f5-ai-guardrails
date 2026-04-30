@@ -7,7 +7,7 @@
 import os
 
 import streamlit as st
-from llama_stack_ui.distribution.ui.modules.api import llama_stack_api
+from llama_stack_ui.distribution.ui.modules.api import active_llama_stack_client, llama_stack_api
 from llama_stack_ui.distribution.ui.modules.guardrails_storage import write_state
 from llama_stack_ui.distribution.ui.modules.utils import get_suggestions_for_databases, get_vector_db_name
 
@@ -80,11 +80,11 @@ def tool_chat_page():
             llm_models = [m for m in models_list if hasattr(m, 'api_model_type') and m.api_model_type == "llm"]
             return [m.identifier for m in llm_models]
         else:
-            models = llama_stack_api.client.models.list()
+            models = active_llama_stack_client().models.list()
             return [m.identifier for m in models if m.api_model_type == "llm"]
 
     model_list = get_available_models()
-    client = llama_stack_api.client
+    client = active_llama_stack_client()
 
     # ------------------------------------------------------------------
     # Tool groups / MCP (shared)
@@ -254,7 +254,7 @@ def tool_chat_page():
     def display_suggested_questions():
         if not selected_vector_dbs:
             return
-        all_vdbs = llama_stack_api.client.vector_dbs.list() or []
+        all_vdbs = active_llama_stack_client().vector_dbs.list() or []
         suggestions = get_suggestions_for_databases(selected_vector_dbs, all_vdbs)
         if not suggestions:
             return
