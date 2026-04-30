@@ -53,7 +53,7 @@ The solution is built on:
 
 ### Architecture
 
-RAG Architecture with F5 AI Guardrails
+![RAG Architecture with F5 AI Guardrails](docs/images/rag-architecture-f5ai.png)
 
 **Data flow:** The client sends a chat request to the F5 AI Guardrails Moderator endpoint. The Moderator passes the prompt through the Guardrails engine, which evaluates it against active policies (prompt injection, PII, toxicity, topic). If the prompt passes, it is forwarded to LlamaStack, which routes it to the vLLM model. The model response is then scanned again on the way back. If either the prompt or response violates a policy, the request is blocked and the client receives an error.
 
@@ -262,7 +262,7 @@ Once deployed, F5 AI Guardrails provides defense-in-depth across multiple AI thr
 
 **Example: Prompt injection blocked in the chat app**
 
-Prompt Injection Blocked
+![Prompt Injection Blocked](docs/images/lab1-task1-chat-prompt-injection_new.png)
 
 ### Custom guardrails
 
@@ -276,7 +276,7 @@ Prompt Injection Blocked
 
 **Example: Same prompt allowed before custom guardrail, blocked after**
 
-Before and After Custom Guardrail
+![Before and After Custom Guardrail](docs/images/lab2-task1-before-after-scanner_new.png)
 
 ### Enforcement modes
 
@@ -292,7 +292,7 @@ Each guardrail operates in one of three modes:
 
 **Example: Guardrail details in the Logs UI — full visibility into which guardrails fired**
 
-Guardrail Details Log
+![Guardrail Details Log](docs/images/lab1-task1-log-details_new.png)
 
 ### Hands-on labs
 
