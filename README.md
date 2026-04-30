@@ -1,6 +1,6 @@
 # Secure Model Inference with F5 AI Guardrails
 
-Protect AI-powered applications against prompt injection, sensitive data leakage, toxic content, and off-topic misuse — securing both the prompts sent to your LLM and the responses returned to users.
+Guard AI applications against prompt attacks and data leakage with enterprise-grade LLM protection using F5 AI Guardrails on Red Hat® OpenShift® AI.
 
 ## Table of contents
 
@@ -14,23 +14,23 @@ Protect AI-powered applications against prompt injection, sensitive data leakage
   - [Prerequisites](#prerequisites)
   - [Supported models](#supported-models)
   - [Installation steps](#installation-steps)
+  - [Delete](#delete)
 - [AI security capabilities](#ai-security-capabilities)
   - [Out-of-the-box guardrail packages](#out-of-the-box-guardrail-packages)
   - [Custom guardrails](#custom-guardrails)
   - [Enforcement modes](#enforcement-modes)
   - [Hands-on labs](#hands-on-labs)
-- [Delete](#delete)
 - [References](#references)
 - [Document management](#document-management)
 - [Tags](#tags)
 
 ## Detailed description
 
-Imagine a financial services team deploying an AI-powered assistant to help underwriters review policies, analyze risk documents, and answer questions about compliance guidelines. The assistant uses a large language model served on Red Hat OpenShift AI, with Retrieval-Augmented Generation (RAG) grounding its answers in the firm's own document corpus — underwriting manuals, regulatory filings, and internal procedures. Before moving the application to production, a security review reveals critical AI-specific risks: a crafted prompt could trick the model into ignoring its system instructions and leaking confidential data, the model might return personally identifiable information (PII) embedded in training data, responses could contain toxic or harmful content, and nothing prevents the assistant from answering questions outside its approved domain.
+Imagine a financial services team deploying an AI-powered assistant to help underwriters review policies, analyze risk documents, and answer questions about compliance guidelines. The assistant uses a large language model served on Red Hat® OpenShift® AI, with Retrieval-Augmented Generation (RAG) grounding its answers in the firm's own document corpus — underwriting manuals, regulatory filings, and internal procedures. Before moving the application to production, a security review reveals critical AI-specific risks: a crafted prompt could trick the model into ignoring its system instructions and leaking confidential data, the model might return personally identifiable information (PII) embedded in training data, responses could contain toxic or harmful content, and nothing prevents the assistant from answering questions outside its approved domain.
 
 These are not traditional network-layer threats — they are AI-layer threats that operate within legitimate API calls. A WAF cannot inspect whether a model response contains a Social Security number or whether a prompt is attempting instruction injection.
 
-This AI quickstart demonstrates a solution using **F5 AI Guardrails** (powered by Calypso AI). It deploys a complete RAG chatbot on OpenShift AI and secures the model inference endpoints with AI-aware content inspection. You get a working application you can demonstrate to security, compliance, and risk stakeholders — complete with simulated attack scenarios that show exactly how each protection layer responds.
+This AI quickstart demonstrates a solution using **F5 AI Guardrails** (powered by Calypso AI). It deploys a complete RAG chatbot on Red Hat OpenShift AI and secures the model inference endpoints with AI-aware content inspection. You get a working application you can demonstrate to security, compliance, and risk stakeholders — complete with simulated attack scenarios that show exactly how each protection layer responds.
 
 While the included demo content targets financial services, the same architecture applies to any industry handling sensitive data — healthcare organizations protecting patient records, government agencies securing citizen-facing AI services, or any enterprise that needs to enforce content safety policies on LLM endpoints before moving to production.
 
@@ -53,7 +53,7 @@ The solution is built on:
 
 ### Architecture
 
-![RAG Architecture with F5 AI Guardrails](docs/images/rag-architecture-f5ai.png)
+![System architecture diagram showing F5 AI Guardrails intercepting requests between client and LlamaStack RAG application](docs/images/rag-architecture-f5ai.png)
 
 **Data flow:** The client sends a chat request to the F5 AI Guardrails Moderator endpoint. The Moderator passes the prompt through the Guardrails engine, which evaluates it against active policies (prompt injection, PII, toxicity, topic). If the prompt passes, it is forwarded to LlamaStack, which routes it to the vLLM model. The model response is then scanned again on the way back. If either the prompt or response violates a policy, the request is blocked and the client receives an error.
 
@@ -245,69 +245,7 @@ When both fields are set, chat requests are routed through the guardrail proxy. 
 - **RAG** — Upload documents, create vector database collections, and query with retrieval-augmented generation
 - **Direct/Guardrail modes** — Chat directly with LlamaStack or route through F5 AI Guardrails for prompt injection, PII, toxicity, and topic enforcement
 
-## AI security capabilities
-
-Once deployed, F5 AI Guardrails provides defense-in-depth across multiple AI threat categories. Each protection can be tested interactively through the included hands-on labs.
-
-### Out-of-the-box guardrail packages
-
-
-| Package               | What it catches                                                                    | Scope               |
-| --------------------- | ---------------------------------------------------------------------------------- | ------------------- |
-| **Prompt Injection**  | Instruction-override attacks, DAN prompts, system prompt extraction, obfuscation   | Prompts             |
-| **PII**               | SSNs, credit cards, emails, phone numbers, data exfiltration requests              | Prompts & Responses |
-| **EU AI Act**         | Subliminal manipulation, biometric surveillance, emotion recognition in employment | Prompts & Responses |
-| **Restricted Topics** | Unauthorized financial advice, medical diagnosis, legal guidance                   | Prompts             |
-
-
-**Example: Prompt injection blocked in the chat app**
-
-![Prompt Injection Blocked](docs/images/lab1-task1-chat-prompt-injection_new.png)
-
-### Custom guardrails
-
-
-| Type        | How it works                                                              | Example use case                                   |
-| ----------- | ------------------------------------------------------------------------- | -------------------------------------------------- |
-| **GenAI**   | AI-driven analysis of intent and context via natural-language description | Internal financial forecasts, competitor mentions  |
-| **Keyword** | Matches specific words or strings                                         | Confidential project names, classified terminology |
-| **RegEx**   | Matches regular expression patterns                                       | Employee IDs, internal account numbers             |
-
-
-**Example: Same prompt allowed before custom guardrail, blocked after**
-
-![Before and After Custom Guardrail](docs/images/lab2-task1-before-after-scanner_new.png)
-
-### Enforcement modes
-
-Each guardrail operates in one of three modes:
-
-
-| Mode       | Behavior                                          | When to use                                  |
-| ---------- | ------------------------------------------------- | -------------------------------------------- |
-| **Block**  | Reject the request — prompt never reaches the LLM | Production enforcement                       |
-| **Audit**  | Allow the request, flag it for review             | Initial rollout and tuning                   |
-| **Redact** | Mask sensitive data and continue the conversation | PII protection without interrupting workflow |
-
-
-**Example: Guardrail details in the Logs UI — full visibility into which guardrails fired**
-
-![Guardrail Details Log](docs/images/lab1-task1-log-details_new.png)
-
-### Hands-on labs
-
-The **[AI Guardrails Use Case Guide](docs/ai_guardrails_use_cases.md)** provides step-by-step labs to configure, test, and observe these protections:
-
-
-| Lab                                      | What you will do                                                                                             |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| **Lab 1 — Prompt and Response Scanning** | Add OOTB guardrail packages, test safe and unsafe prompts, observe blocked events in the Logs dashboard      |
-| **Lab 2 — Creating Custom Guardrails**   | Build GenAI, Keyword, and RegEx guardrails tailored to your organization, verify they block matching content |
-
-
-The labs use the Streamlit chat app and the Moderator UI, with optional `curl` commands for scripted testing. The use case guide is updated as new guardrail capabilities are released.
-
-## Delete
+### Delete
 
 Remove the RAG stack:
 
@@ -335,6 +273,68 @@ To delete the RAG namespace entirely:
 ```bash
 oc delete project <NAMESPACE>
 ```
+
+## AI security capabilities
+
+Once deployed, F5 AI Guardrails provides defense-in-depth across multiple AI threat categories. Each protection can be tested interactively through the included hands-on labs.
+
+### Out-of-the-box guardrail packages
+
+
+| Package               | What it catches                                                                    | Scope               |
+| --------------------- | ---------------------------------------------------------------------------------- | ------------------- |
+| **Prompt Injection**  | Instruction-override attacks, DAN prompts, system prompt extraction, obfuscation   | Prompts             |
+| **PII**               | SSNs, credit cards, emails, phone numbers, data exfiltration requests              | Prompts & Responses |
+| **EU AI Act**         | Subliminal manipulation, biometric surveillance, emotion recognition in employment | Prompts & Responses |
+| **Restricted Topics** | Unauthorized financial advice, medical diagnosis, legal guidance                   | Prompts             |
+
+
+**Example: Prompt injection blocked in the chat app**
+
+![Chat interface showing malicious prompt blocked by F5 AI Guardrails with error message](docs/images/lab1-task1-chat-prompt-injection_new.png)
+
+### Custom guardrails
+
+
+| Type        | How it works                                                              | Example use case                                   |
+| ----------- | ------------------------------------------------------------------------- | -------------------------------------------------- |
+| **GenAI**   | AI-driven analysis of intent and context via natural-language description | Internal financial forecasts, competitor mentions  |
+| **Keyword** | Matches specific words or strings                                         | Confidential project names, classified terminology |
+| **RegEx**   | Matches regular expression patterns                                       | Employee IDs, internal account numbers             |
+
+
+**Example: Same prompt allowed before custom guardrail, blocked after**
+
+![Side-by-side comparison showing same prompt allowed before guardrail configuration and blocked after](docs/images/lab2-task1-before-after-scanner_new.png)
+
+### Enforcement modes
+
+Each guardrail operates in one of three modes:
+
+
+| Mode       | Behavior                                          | When to use                                  |
+| ---------- | ------------------------------------------------- | -------------------------------------------- |
+| **Block**  | Reject the request — prompt never reaches the LLM | Production enforcement                       |
+| **Audit**  | Allow the request, flag it for review             | Initial rollout and tuning                   |
+| **Redact** | Mask sensitive data and continue the conversation | PII protection without interrupting workflow |
+
+
+**Example: Guardrail details in the Logs UI — full visibility into which guardrails fired**
+
+![Moderator UI logs panel displaying which guardrails triggered and violation details](docs/images/lab1-task1-log-details_new.png)
+
+### Hands-on labs
+
+The **[AI Guardrails Use Case Guide](docs/ai_guardrails_use_cases.md)** provides step-by-step labs to configure, test, and observe these protections:
+
+
+| Lab                                      | What you will do                                                                                             |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **Lab 1 — Prompt and Response Scanning** | Add OOTB guardrail packages, test safe and unsafe prompts, observe blocked events in the Logs dashboard      |
+| **Lab 2 — Creating Custom Guardrails**   | Build GenAI, Keyword, and RegEx guardrails tailored to your organization, verify they block matching content |
+
+
+The labs use the Streamlit chat app and the Moderator UI, with optional `curl` commands for scripted testing. The use case guide is updated as new guardrail capabilities are released.
 
 ## References
 
@@ -371,8 +371,7 @@ Navigate to **Settings → Vector Databases** in the frontend to create vector d
 
 ## Tags
 
-- **Title:** Secure model inference with F5 AI Guardrails
-- **Industry:** Banking and securities
-- **Product:** OpenShift AI, OpenShift, F5 AI Guardrails
-- **Contributor org:** F5 / Red Hat
+* **Industry:** Banking and securities
+* **Product:** OpenShift AI, OpenShift, F5 AI Guardrails
+* **Contributor org:** F5 / Red Hat
 
