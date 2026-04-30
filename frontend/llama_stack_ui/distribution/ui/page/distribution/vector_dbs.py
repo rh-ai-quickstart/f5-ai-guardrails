@@ -12,7 +12,7 @@ import streamlit as st
 import traceback
 
 from llama_stack_ui.distribution.ui.modules.utils import get_vector_db_name, data_url_from_file
-from llama_stack_ui.distribution.ui.modules.api import llama_stack_api
+from llama_stack_ui.distribution.ui.modules.api import active_llama_stack_client
 from llama_stack_client import RAGDocument
 
 
@@ -56,7 +56,7 @@ def vector_dbs():
         st.session_state["creation_message"] = ""
     
     # Fetch all vector databases
-    vdb_list = llama_stack_api.client.vector_dbs.list()
+    vdb_list = active_llama_stack_client().vector_dbs.list()
     
     # Build dropdown options based on whether databases exist
     dropdown_options = []
@@ -181,7 +181,7 @@ def _create_vector_database(vdb_name):
             return
             
         # Check for duplicate names
-        existing_vdbs = llama_stack_api.client.vector_dbs.list()
+        existing_vdbs = active_llama_stack_client().vector_dbs.list()
         existing_names = [get_vector_db_name(vdb) for vdb in existing_vdbs]
         if vdb_name in existing_names:
             st.session_state["creation_status"] = "error"
@@ -189,7 +189,7 @@ def _create_vector_database(vdb_name):
             return
         
         # Get vector IO provider
-        providers = llama_stack_api.client.providers.list()
+        providers = active_llama_stack_client().providers.list()
         vector_io_provider = None
         for provider in providers:
             if provider.api == "vector_io":
@@ -203,7 +203,7 @@ def _create_vector_database(vdb_name):
         
         # Create the vector database
         with st.spinner(f"Creating vector database '{vdb_name}'..."):
-            vector_db = llama_stack_api.client.vector_dbs.register(
+            vector_db = active_llama_stack_client().vector_dbs.register(
                 vector_db_id=vdb_name,
                 embedding_dimension=384,
                 embedding_model="all-MiniLM-L6-v2",
@@ -318,7 +318,7 @@ def _upload_documents_to_database(vector_db_name, uploaded_files, vector_db_id=N
         # Insert documents into the existing vector database
         actual_db_id = vector_db_id or vector_db_name
         with st.spinner(f"Uploading documents to '{vector_db_name}'..."):
-            llama_stack_api.client.tool_runtime.rag_tool.insert(
+            active_llama_stack_client().tool_runtime.rag_tool.insert(
                 vector_db_id=actual_db_id,  # Use the correct database ID
                 documents=documents,
                 chunk_size_in_tokens=512,
@@ -569,7 +569,7 @@ def _show_existing_documents_table(vector_db_name, vector_db_obj=None):
             else:
                 # Fallback: Try a simple query to see if documents exist
                 try:
-                    rag_response = llama_stack_api.client.tool_runtime.rag_tool.query(
+                    rag_response = active_llama_stack_client().tool_runtime.rag_tool.query(
                         content="document",
                         vector_db_ids=[vector_db_id]
                     )
@@ -614,7 +614,7 @@ def _show_existing_documents_table(vector_db_name, vector_db_obj=None):
                         
                         if test_query:
                             try:
-                                test_response = llama_stack_api.client.tool_runtime.rag_tool.query(
+                                test_response = active_llama_stack_client().tool_runtime.rag_tool.query(
                                     content=test_query,
                                     vector_db_ids=[vector_db_id]
                                 )

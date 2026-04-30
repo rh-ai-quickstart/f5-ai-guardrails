@@ -9,7 +9,7 @@ import os
 import pandas as pd
 import streamlit as st
 
-from llama_stack_ui.distribution.ui.modules.api import llama_stack_api
+from llama_stack_ui.distribution.ui.modules.api import active_llama_stack_client
 from llama_stack_ui.distribution.ui.modules.guardrails_storage import write_state
 from llama_stack_ui.distribution.ui.modules.utils import format_api_connection_error
 
@@ -21,7 +21,7 @@ def fetch_models():
     st.session_state["models_list"] = []
 
     try:
-        models_list = llama_stack_api.client.models.list()
+        models_list = active_llama_stack_client().models.list()
         st.session_state["models_loading"] = False
         if models_list:
             st.session_state["models_list"] = models_list

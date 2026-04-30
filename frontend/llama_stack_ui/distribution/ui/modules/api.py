@@ -33,11 +33,8 @@ def _httpx_client_for_url(url: str) -> httpx.Client | None:
 class LlamaStackApi:
     def __init__(self):
         base = os.environ.get("LLAMA_STACK_ENDPOINT", "http://localhost:8321")
-        hx = _httpx_client_for_url(base)
-        if hx is not None:
-            self.client = LlamaStackClient(base_url=base, http_client=hx)
-        else:
-            self.client = LlamaStackClient(base_url=base)
+        token = os.environ.get("LLAMA_STACK_API_TOKEN", "")
+        self.client = self.create_client_with_url(base, token)
 
     def run_scoring(self, row, scoring_function_ids: list[str], scoring_params: Optional[dict]):
         """Run scoring on a single row"""
@@ -169,3 +166,22 @@ class LlamaStackApi:
 
 
 llama_stack_api = LlamaStackApi()
+
+
+def active_llama_stack_client() -> LlamaStackClient:
+    """
+    LlamaStack client using Settings sidebar URL/token when present, else env vars.
+    Use this from Streamlit pages instead of llama_stack_api.client so in-cluster
+    LLAMA_STACK_* env and UI overrides stay consistent.
+    """
+    base = os.environ.get("LLAMA_STACK_ENDPOINT", "http://localhost:8321")
+    token = os.environ.get("LLAMA_STACK_API_TOKEN", "")
+    try:
+        import streamlit as st
+
+        if hasattr(st, "session_state"):
+            base = (st.session_state.get("ls_endpoint_url") or base).strip() or base
+            token = (st.session_state.get("ls_api_token") or token) or ""
+    except Exception:
+        pass
+    return llama_stack_api.create_client_with_url(base, token)
