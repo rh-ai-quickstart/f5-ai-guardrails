@@ -247,32 +247,16 @@ When both fields are set, chat requests are routed through the guardrail proxy. 
 
 ### Uninstall
 
-Remove the RAG stack:
+From `deploy/helm`, `make uninstall` removes the RAG Helm release, tears down the F5 AI Guardrails operator (SecurityOperator, subscription, CSVs matching `f5-ai-security-operator`), deletes the default operator namespaces (`f5-ai-sec`, `cai-moderator`, `f5-ai-sec-inference`, `prefect`), and deletes your RAG `NAMESPACE` project.
 
 ```bash
 cd deploy/helm
 make uninstall NAMESPACE=<NAMESPACE>
 ```
 
-Remove F5 AI Guardrails (operator and all managed namespaces):
+Override names if your install differs (see `deploy/helm/Makefile` defaults):
 
-```bash
-# Delete the SecurityOperator CR (triggers cleanup of managed namespaces)
-oc delete securityoperator security-operator-demo -n cai-moderator
-
-# Delete the operator subscription and CSV
-oc delete subscription f5-ai-security-operator -n f5-ai-sec
-oc delete csv f5-ai-security-operator.v0.7.0 -n f5-ai-sec
-
-# Delete namespaces
-oc delete project f5-ai-sec cai-moderator f5-ai-sec-inference prefect
-```
-
-To delete the RAG namespace entirely:
-
-```bash
-oc delete project <NAMESPACE>
-```
+`SECURITYOPERATOR_NAME`, `CAI_MODERATOR_NS`, `F5_OPERATOR_NS`, `OPERATOR_SUBSCRIPTION`, `GUARDRAILS_PROJECT_NS`.
 
 ## AI security capabilities
 
