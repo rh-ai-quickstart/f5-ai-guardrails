@@ -7,9 +7,23 @@
 import os
 
 import streamlit as st
-from llama_stack_ui.distribution.ui.modules.api import active_llama_stack_client, llama_stack_api
+from llama_stack_ui.distribution.ui.modules.api import (
+    active_llama_stack_client,
+    list_vector_catalog,
+    llama_stack_api,
+    rag_tool_query,
+)
 from llama_stack_ui.distribution.ui.modules.guardrails_storage import write_state
-from llama_stack_ui.distribution.ui.modules.utils import get_suggestions_for_databases, get_vector_db_name
+from llama_stack_ui.distribution.ui.modules.utils import (
+    format_api_connection_error,
+    get_suggestions_for_databases,
+    get_vector_db_id,
+    get_vector_db_name,
+    llamastack_model_id,
+    llamastack_model_is_llm,
+    openai_chat_completion_debug_hint,
+    openai_chat_completion_text,
+)
 
 
 def _get_scanner_names() -> dict[str, str]:
@@ -50,7 +64,9 @@ def _format_guardrail_block(exc):
         if scanner_name:
             label = scanner_name
         else:
-            stype = s.get("data", {}).get("type", "unknown")
+            raw_data = s.get("data")
+            data = raw_data if isinstance(raw_data, dict) else {}
+            stype = data.get("type", "unknown")
             label = f"Pattern Match (PII/Regex) — `{sid}`" if stype == "regex" else f"AI Scanner — `{sid}`"
         dir_label = f" on {sdir}" if sdir else ""
         lines.append(f"- **{label}**{dir_label}")
@@ -77,21 +93,14 @@ def tool_chat_page():
     def get_available_models():
         if "models_list" in st.session_state and st.session_state["models_list"]:
             models_list = st.session_state["models_list"]
-            llm_models = [m for m in models_list if hasattr(m, 'api_model_type') and m.api_model_type == "llm"]
-            return [m.identifier for m in llm_models]
+            llm_models = [m for m in models_list if llamastack_model_is_llm(m)]
+            return [llamastack_model_id(m) for m in llm_models]
         else:
-            models = active_llama_stack_client().models.list()
-            return [m.identifier for m in models if m.api_model_type == "llm"]
-
-    model_list = get_available_models()
-    client = active_llama_stack_client()
-
-    # ------------------------------------------------------------------
-    # Tool groups / MCP (shared)
-    # ------------------------------------------------------------------
-    tool_groups = client.toolgroups.list()
-    tool_groups_list = [tg.identifier for tg in tool_groups]
-    mcp_tools_list = [t for t in tool_groups_list if t.startswith("mcp::")]
+            try:
+                models = active_llama_stack_client().models.list()
+                return [llamastack_model_id(m) for m in models if llamastack_model_is_llm(m)]
+            except Exception:
+                return []
 
     selected_vector_dbs = []
     toolgroup_selection = ["builtin::rag"]
@@ -145,24 +154,46 @@ def tool_chat_page():
 
         # ---- LlamaStack endpoint ----
         with st.expander("🦙 LlamaStack Endpoint", expanded=not st.session_state.get("ls_endpoint_url")):
-            ls_url = st.text_input(
+            st.text_input(
                 "Endpoint URL",
-                value=st.session_state.ls_endpoint_url,
-                key="ls_url_sidebar",
                 help="LlamaStack endpoint URL (default from LLAMA_STACK_ENDPOINT env var)",
+                key="ls_endpoint_url",
             )
-            ls_token = st.text_input(
+            st.text_input(
                 "API Token",
-                value=st.session_state.ls_api_token,
                 type="password",
-                key="ls_token_sidebar",
                 help="Bearer token for LlamaStack (optional)",
+                key="ls_api_token",
             )
-            st.session_state.ls_endpoint_url = ls_url
-            st.session_state.ls_api_token = ls_token
+
+        # LlamaStack widgets above must run before we build the client (same run + same keys).
+        model_list: list = []
+        tool_groups_list: list = []
+        mcp_tools_list: list = []
+        vector_dbs: list = []
+        client = active_llama_stack_client()
+        try:
+            model_list = get_available_models()
+        except Exception as e:
+            st.sidebar.error(f"LlamaStack models: {e}")
+        try:
+            tool_groups = client.toolgroups.list()
+            tool_groups_list = [tg.identifier for tg in tool_groups]
+            mcp_tools_list = [t for t in tool_groups_list if t.startswith("mcp::")]
+        except Exception as e:
+            st.sidebar.warning(
+                "LlamaStack tool groups: "
+                + format_api_connection_error(e, st.session_state.get("ls_endpoint_url"))
+            )
+        try:
+            vector_dbs = list_vector_catalog(client) or []
+        except Exception as e:
+            st.sidebar.warning(
+                "LlamaStack vector DBs: "
+                + format_api_connection_error(e, st.session_state.get("ls_endpoint_url"))
+            )
 
         # ---- Document Collections (RAG) ----
-        vector_dbs = client.vector_dbs.list() or []
         if vector_dbs:
             vector_db_names = [get_vector_db_name(vdb) for vdb in vector_dbs]
             selected_vector_dbs = st.multiselect(
@@ -200,6 +231,8 @@ def tool_chat_page():
             reset_chat()
             st.rerun()
 
+    model_pick = model_list if model_list else ["(no models — check LlamaStack URL / cluster)"]
+
     # ------------------------------------------------------------------
     # Session state — dual message histories
     # ------------------------------------------------------------------
@@ -212,6 +245,12 @@ def tool_chat_page():
     if "show_more_questions" not in st.session_state:
         st.session_state.show_more_questions = False
 
+    if not model_list:
+        st.warning(
+            "LlamaStack did not return any models (connection error, wrong URL, or HTTP 503). "
+            "For `./start.sh`, confirm `oc login` and that the `llamastack` pod in your RAG namespace is Ready, then refresh."
+        )
+
     # ------------------------------------------------------------------
     # Dual-panel layout
     # ------------------------------------------------------------------
@@ -220,7 +259,7 @@ def tool_chat_page():
     with left_col:
         st.markdown("### 🛡️ F5 Guardrails")
         f5_model = st.selectbox(
-            "Model", model_list, key="f5_model_select", label_visibility="collapsed",
+            "Model", model_pick, key="f5_model_select", label_visibility="collapsed",
         )
         g_url_display = st.session_state.get("guardrail_url", "")
         if g_url_display:
@@ -232,9 +271,9 @@ def tool_chat_page():
     with right_col:
         st.markdown("### 🦙 LlamaStack Direct")
         ls_model = st.selectbox(
-            "Model", model_list, key="ls_model_select", label_visibility="collapsed",
+            "Model", model_pick, key="ls_model_select", label_visibility="collapsed",
         )
-        st.caption(f"`{st.session_state.ls_endpoint_url}`")
+        st.caption(f"`{st.session_state.get('ls_endpoint_url', '')}`")
         ls_chat = st.container(height=500)
 
     # Render existing histories
@@ -252,9 +291,12 @@ def tool_chat_page():
     # Suggested questions (RAG)
     # ------------------------------------------------------------------
     def display_suggested_questions():
-        if not selected_vector_dbs:
+        if not model_list or not selected_vector_dbs:
             return
-        all_vdbs = active_llama_stack_client().vector_dbs.list() or []
+        try:
+            all_vdbs = list_vector_catalog(active_llama_stack_client()) or []
+        except Exception:
+            return
         suggestions = get_suggestions_for_databases(selected_vector_dbs, all_vdbs)
         if not suggestions:
             return
@@ -298,6 +340,9 @@ def tool_chat_page():
     # using the SAME OpenAI client (chat.completions.create)
     # ------------------------------------------------------------------
     def process_dual_prompt(prompt):
+        if not model_list:
+            st.error("Load LlamaStack models first (see warning above).")
+            return
         # Append user message to both histories
         st.session_state.f5_messages.append({"role": "user", "content": prompt})
         st.session_state.ls_messages.append({"role": "user", "content": prompt})
@@ -312,16 +357,21 @@ def tool_chat_page():
         # --- Shared RAG context ---
         prompt_context = None
         if selected_vector_dbs:
-            all_vdbs = client.vector_dbs.list() or []
-            vdb_ids = [v.identifier for v in all_vdbs if get_vector_db_name(v) in selected_vector_dbs]
+            all_vdbs = list_vector_catalog(client) or []
+            vdb_ids = [get_vector_db_id(v) for v in all_vdbs if get_vector_db_name(v) in selected_vector_dbs]
             with st.spinner("Retrieving context (RAG)..."):
                 try:
-                    rag_resp = client.tool_runtime.rag_tool.query(
-                        content=prompt, vector_db_ids=list(vdb_ids),
+                    rag_resp = rag_tool_query(
+                        client,
+                        content=prompt,
+                        vector_db_ids=list(vdb_ids),
                     )
                     prompt_context = rag_resp.content
                 except Exception as e:
-                    st.warning(f"RAG Error: {e}")
+                    st.warning(
+                        "RAG Error: "
+                        + format_api_connection_error(e, st.session_state.get("ls_endpoint_url"))
+                    )
 
         if prompt_context:
             extended_prompt = (
@@ -348,15 +398,22 @@ def tool_chat_page():
                         f5_oai = llama_stack_api.create_openai_client(
                             f5_ep.strip(), f5_tk.strip(),
                         )
+                        # Do not send vLLM-only extra_body through the Moderator; some stacks return 200 with empty messages.
                         resp = f5_oai.chat.completions.create(
                             model=f5_model,
                             messages=messages_for_api,
                             max_tokens=max_tokens,
                             temperature=temperature,
                             top_p=top_p,
-                            extra_body={"repetition_penalty": repetition_penalty},
                         )
-                        f5_response = resp.choices[0].message.content or ""
+                        f5_response = openai_chat_completion_text(resp)
+                        if not f5_response.strip():
+                            f5_response = (
+                                "⚠️ F5 Guardrails returned an empty completion.\n\n"
+                                f"```\n{openai_chat_completion_debug_hint(resp)}\n```\n\n"
+                                "Confirm the **Moderator → model** connection uses the same **model id** as in the sidebar, "
+                                "and that the upstream URL is `/v1/chat/completions` on LlamaStack 0.6+."
+                            )
                     except Exception as e:
                         body = getattr(e, "body", None)
                         if isinstance(body, dict) and "cai_error" in body:
@@ -389,7 +446,12 @@ def tool_chat_page():
                         top_p=top_p,
                         extra_body={"repetition_penalty": repetition_penalty},
                     )
-                    ls_response = resp.choices[0].message.content or ""
+                    ls_response = openai_chat_completion_text(resp)
+                    if not ls_response.strip():
+                        ls_response = (
+                            "⚠️ LlamaStack returned an empty completion. "
+                            "Use the **server root** in settings (e.g. `https://…/…` without `/v1/models`)."
+                        )
                 except Exception as e:
                     ls_response = f"⚠️ LlamaStack error: {e}"
                 ls_placeholder.markdown(ls_response)
@@ -403,8 +465,12 @@ def tool_chat_page():
         st.session_state.selected_question = None
         process_dual_prompt(prompt)
 
-    if prompt := st.chat_input("Ask a question — sent to both endpoints..."):
-        process_dual_prompt(prompt)
+    _chat_prompt = st.chat_input(
+        "Ask a question — sent to both endpoints...",
+        disabled=not model_list,
+    )
+    if model_list and _chat_prompt:
+        process_dual_prompt(_chat_prompt)
 
 
 tool_chat_page()

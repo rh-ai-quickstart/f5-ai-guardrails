@@ -11,9 +11,24 @@ import pandas as pd
 import streamlit as st
 import traceback
 
-from llama_stack_ui.distribution.ui.modules.utils import get_vector_db_name, data_url_from_file
-from llama_stack_ui.distribution.ui.modules.api import active_llama_stack_client
-from llama_stack_client import RAGDocument
+from llama_stack_ui.distribution.ui.modules.utils import get_vector_db_id, get_vector_db_name, data_url_from_file
+from llama_stack_ui.distribution.ui.modules.api import (
+    active_llama_stack_client,
+    list_vector_catalog,
+    rag_tool_insert,
+    rag_tool_query,
+    register_vector_db,
+)
+
+
+def _vector_db_row_dict(v):
+    to_dict = getattr(v, "to_dict", None)
+    if callable(to_dict):
+        return to_dict()
+    model_dump = getattr(v, "model_dump", None)
+    if callable(model_dump):
+        return model_dump()
+    return {}
 
 
 def vector_dbs():
@@ -56,7 +71,7 @@ def vector_dbs():
         st.session_state["creation_message"] = ""
     
     # Fetch all vector databases
-    vdb_list = active_llama_stack_client().vector_dbs.list()
+    vdb_list = list_vector_catalog(active_llama_stack_client())
     
     # Build dropdown options based on whether databases exist
     dropdown_options = []
@@ -64,7 +79,7 @@ def vector_dbs():
     
     if vdb_list:
         # When databases exist: list actual DBs first, then "Create New" LAST
-        existing_vdbs = {get_vector_db_name(v): v.to_dict() for v in vdb_list}
+        existing_vdbs = {get_vector_db_name(v): _vector_db_row_dict(v) for v in vdb_list}
         dropdown_options.extend(list(existing_vdbs.keys()))
         dropdown_options.append("Create New")  # Add "Create New" as LAST item
         vdb_info = existing_vdbs
@@ -181,7 +196,7 @@ def _create_vector_database(vdb_name):
             return
             
         # Check for duplicate names
-        existing_vdbs = active_llama_stack_client().vector_dbs.list()
+        existing_vdbs = list_vector_catalog(active_llama_stack_client())
         existing_names = [get_vector_db_name(vdb) for vdb in existing_vdbs]
         if vdb_name in existing_names:
             st.session_state["creation_status"] = "error"
@@ -203,7 +218,8 @@ def _create_vector_database(vdb_name):
         
         # Create the vector database
         with st.spinner(f"Creating vector database '{vdb_name}'..."):
-            vector_db = active_llama_stack_client().vector_dbs.register(
+            vector_db = register_vector_db(
+                active_llama_stack_client(),
                 vector_db_id=vdb_name,
                 embedding_dimension=384,
                 embedding_model="all-MiniLM-L6-v2",
@@ -280,7 +296,9 @@ def _show_document_upload_ui(vector_db_name, vector_db_obj=None):
             st.info(f"📤 Uploading {len(uploaded_files)} file(s): {', '.join([f.name for f in uploaded_files])}")
             
             # Get the correct database ID for upload
-            vector_db_id = vector_db_obj.identifier if vector_db_obj and hasattr(vector_db_obj, 'identifier') else vector_db_name
+            vector_db_id = (
+                get_vector_db_id(vector_db_obj) if vector_db_obj else vector_db_name
+            )
             
             # Upload automatically
             _upload_documents_to_database(vector_db_name, uploaded_files, vector_db_id)
@@ -307,19 +325,20 @@ def _upload_documents_to_database(vector_db_name, uploaded_files, vector_db_id=N
         # Convert uploaded files into RAGDocument instances
         with st.spinner(f"Processing {len(uploaded_files)} file(s)..."):
             documents = [
-                RAGDocument(
-                    document_id=uploaded_file.name,
-                    content=data_url_from_file(uploaded_file),
-                    metadata={"source": uploaded_file.name, "type": "uploaded_file"}  # LlamaStack maps 'source' to chunk_metadata.source
-                )
+                {
+                    "document_id": uploaded_file.name,
+                    "content": data_url_from_file(uploaded_file),
+                    "metadata": {"source": uploaded_file.name, "type": "uploaded_file"},
+                }
                 for uploaded_file in uploaded_files
             ]
         
         # Insert documents into the existing vector database
         actual_db_id = vector_db_id or vector_db_name
         with st.spinner(f"Uploading documents to '{vector_db_name}'..."):
-            active_llama_stack_client().tool_runtime.rag_tool.insert(
-                vector_db_id=actual_db_id,  # Use the correct database ID
+            rag_tool_insert(
+                active_llama_stack_client(),
+                vector_db_id=actual_db_id,
                 documents=documents,
                 chunk_size_in_tokens=512,
             )
@@ -495,10 +514,10 @@ def _show_existing_documents_table(vector_db_name, vector_db_obj=None):
     """
     try:
         # Get the correct vector database ID
-        if vector_db_obj and hasattr(vector_db_obj, 'identifier'):
-            vector_db_id = vector_db_obj.identifier
+        if vector_db_obj:
+            vector_db_id = get_vector_db_id(vector_db_obj)
         else:
-            vector_db_id = vector_db_name  # Fallback to display name
+            vector_db_id = vector_db_name
         
         # Initialize session state for deletion status
         if "delete_status" not in st.session_state:
@@ -569,9 +588,10 @@ def _show_existing_documents_table(vector_db_name, vector_db_obj=None):
             else:
                 # Fallback: Try a simple query to see if documents exist
                 try:
-                    rag_response = active_llama_stack_client().tool_runtime.rag_tool.query(
+                    rag_response = rag_tool_query(
+                        active_llama_stack_client(),
                         content="document",
-                        vector_db_ids=[vector_db_id]
+                        vector_db_ids=[vector_db_id],
                     )
                     
                     # Check if we got content back (indicates documents exist)
@@ -614,9 +634,10 @@ def _show_existing_documents_table(vector_db_name, vector_db_obj=None):
                         
                         if test_query:
                             try:
-                                test_response = active_llama_stack_client().tool_runtime.rag_tool.query(
+                                test_response = rag_tool_query(
+                                    active_llama_stack_client(),
                                     content=test_query,
-                                    vector_db_ids=[vector_db_id]
+                                    vector_db_ids=[vector_db_id],
                                 )
                                 
                                 if test_response.content:

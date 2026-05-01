@@ -372,7 +372,7 @@ In the Moderator UI, configure the scanner to point to the LlamaStack OpenAI-com
 | Provider | `llamastack` |
 | Model | `llama-3-2-1b-instruct-quantized/RedHatAI/Llama-3.2-1B-Instruct-quantized.w8a8` |
 | API Key | `dummy` (auth handled by the route/gateway layer) |
-| Endpoint | `http://llamastack-http-<namespace>.apps.<cluster-domain>/v1/openai/v1/chat/completions` |
+| Endpoint | `http://llamastack-http-<namespace>.apps.<cluster-domain>/v1/chat/completions` (LlamaStack 0.6+; older stacks may use `/v1/openai/v1/chat/completions`) |
 
 ### 6.3 Verify end-to-end
 

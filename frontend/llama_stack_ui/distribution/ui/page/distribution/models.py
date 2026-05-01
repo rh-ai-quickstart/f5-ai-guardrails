@@ -11,7 +11,11 @@ import streamlit as st
 
 from llama_stack_ui.distribution.ui.modules.api import active_llama_stack_client
 from llama_stack_ui.distribution.ui.modules.guardrails_storage import write_state
-from llama_stack_ui.distribution.ui.modules.utils import format_api_connection_error
+from llama_stack_ui.distribution.ui.modules.utils import (
+    format_api_connection_error,
+    llamastack_model_id,
+    llamastack_model_is_llm,
+)
 
 
 def fetch_models():
@@ -103,24 +107,18 @@ def models():
     st.subheader("🦙 LlamaStack Endpoint")
     st.caption("Direct LlamaStack inference endpoint (without guardrail scanning).")
 
-    ls_url = st.text_input(
+    st.text_input(
         "Endpoint URL",
-        value=st.session_state["ls_endpoint_url"],
         help="LlamaStack endpoint URL. Also settable via LLAMA_STACK_ENDPOINT env var.",
-        key="ls_url_settings",
+        key="ls_endpoint_url",
     )
-    ls_token = st.text_input(
+    st.text_input(
         "API Token",
-        value=st.session_state["ls_api_token"],
         type="password",
         help="Bearer token for LlamaStack (optional). "
              "Also settable via LLAMA_STACK_API_TOKEN env var.",
-        key="ls_token_settings",
+        key="ls_api_token",
     )
-    if ls_url != st.session_state["ls_endpoint_url"]:
-        st.session_state["ls_endpoint_url"] = ls_url
-    if ls_token != st.session_state["ls_api_token"]:
-        st.session_state["ls_api_token"] = ls_token
 
     # ------------------------------------------------------------------
     # Auto-fetch models on first load
@@ -150,13 +148,13 @@ def models():
         st.info("No models available.")
         return
 
-    llm_models = [model for model in models_list if hasattr(model, 'api_model_type') and model.api_model_type == "llm"]
+    llm_models = [model for model in models_list if llamastack_model_is_llm(model)]
 
     if not llm_models:
         st.info("No LLM models available from this endpoint.")
         return
 
-    models_data = [{"Model Identifier": model.identifier} for model in llm_models]
+    models_data = [{"Model Identifier": llamastack_model_id(model)} for model in llm_models]
     df = pd.DataFrame(models_data)
     df.index = df.index + 1
     st.dataframe(df, use_container_width=True, hide_index=False)
