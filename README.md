@@ -55,22 +55,26 @@ The solution is built on:
 
 ![RAG Architecture with F5 AI Guardrails](docs/images/rag-architecture-f5ai.png)
 
-**Data flow:** The client sends a chat request to the F5 AI Guardrails Moderator endpoint. The Moderator passes the prompt through the Guardrails engine, which evaluates it against active policies (prompt injection, PII, toxicity, topic). If the prompt passes, it is forwarded to LlamaStack, which routes it to the vLLM model. The model response is then scanned again on the way back. If either the prompt or response violates a policy, the request is blocked and the client receives an error.
+**Data flow:** The client sends a chat request to the F5 AI Guardrails Moderator endpoint. The Moderator passes the prompt through the Guardrails engine, which evaluates it against active policies (prompt injection, PII, toxicity, topic). If the prompt passes, it is forwarded to LlamaStack, which routes it to the vLLM ServingRuntime via KServe on OpenShift AI. For RAG queries, LlamaStack also retrieves grounding context from the PGVector database (running on OpenShift, outside the OpenShift AI plane). The model response is then scanned again on the way back. If either the prompt or response violates a policy, the request is blocked and the client receives an error.
+
+The diagram above reflects this split: the **F5 AI Security Operator** manages the Guardrails and Red Team workloads on OpenShift; **OpenShift AI** (the inner dashed boundary) hosts only the model-serving layer — KServe and the vLLM ServingRuntime — while LlamaStack, the Vector DB, and the Frontend UI run on plain OpenShift.
 
 
-| Layer/Component   | Technology                                | Purpose                                                       |
-| ----------------- | ----------------------------------------- | ------------------------------------------------------------- |
-| **Orchestration** | OpenShift AI                              | Container orchestration and GPU acceleration                  |
-| **AI Security**   | F5 AI Guardrails (Moderator + Guardrails) | Prompt/response inspection, policy enforcement                |
-| **Framework**     | LLaMA Stack                               | AI application building blocks, OpenAI-compatible API         |
-| **UI Layer**      | Streamlit                                 | Chat interface for interactive demos                          |
-| **LLM**           | Llama-3.2-1B-Instruct (quantized)         | Generates contextual responses                                |
-| **Embedding**     | all-MiniLM-L6-v2                          | Text to vector embeddings                                     |
-| **Vector DB**     | PostgreSQL + PGVector                     | Stores embeddings and semantic search                         |
-| **Policy Engine** | Calypso AI Guardrails                     | Executes guardrail policies (injection, PII, toxicity, topic) |
-| **Red Team**      | Calypso AI Red Team                       | Adversarial testing and vulnerability assessment              |
-| **Database**      | PostgreSQL                                | Stores settings, policies, and scan results                   |
-| **Workflow**      | Prefect                                   | Orchestrates scan and red-team jobs                           |
+| Layer/Component    | Technology                                | Purpose                                                       |
+| ------------------ | ----------------------------------------- | ------------------------------------------------------------- |
+| **Platform**       | Red Hat OpenShift                         | Container orchestration; hosts F5 AI Security Operator, LlamaStack, Vector DB, and the UI |
+| **Model Serving**  | Red Hat OpenShift AI (KServe + vLLM ServingRuntime) | GPU-accelerated LLM serving via KServe InferenceServices |
+| **F5 AI Security Operator** | `f5-ai-security-operator` (OLM)  | Deploys and manages the Guardrails and Red Team workloads     |
+| **AI Security**    | F5 AI Guardrails (Moderator + Guardrails) | Prompt/response inspection, policy enforcement                |
+| **Red Team**       | Calypso AI Red Team                       | Adversarial testing and vulnerability assessment              |
+| **Policy Engine**  | Calypso AI Guardrails                     | Executes guardrail policies (injection, PII, toxicity, topic) |
+| **Framework**      | LLaMA Stack                               | AI application building blocks, OpenAI-compatible API         |
+| **UI Layer**       | Streamlit                                 | Chat interface for interactive demos                          |
+| **LLM**            | Llama-3.2-1B-Instruct (quantized)         | Generates contextual responses                                |
+| **Embedding**      | all-MiniLM-L6-v2                          | Text to vector embeddings                                     |
+| **Vector DB**      | PostgreSQL + PGVector                     | Stores embeddings for semantic retrieval (on OpenShift)       |
+| **Database**       | PostgreSQL                                | Moderator settings, policies, and scan results                |
+| **Workflow**       | Prefect                                   | Orchestrates scan and red-team jobs                           |
 
 
 ## Requirements
