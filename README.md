@@ -1,6 +1,6 @@
 # Secure Model Inference with F5 AI Guardrails
 
-Protect AI-powered applications against prompt injection, sensitive data leakage, toxic content, and off-topic misuse — securing both the prompts sent to your LLM and the responses returned to users.
+Guard AI applications against prompt attacks and sensitive data leakage with enterprise-grade LLM protection using F5 AI Guardrails on Red Hat® OpenShift® AI.
 
 ## Table of contents
 
@@ -14,23 +14,23 @@ Protect AI-powered applications against prompt injection, sensitive data leakage
   - [Prerequisites](#prerequisites)
   - [Supported models](#supported-models)
   - [Installation steps](#installation-steps)
+  - [Uninstall](#uninstall)
 - [AI security capabilities](#ai-security-capabilities)
   - [Out-of-the-box guardrail packages](#out-of-the-box-guardrail-packages)
   - [Custom guardrails](#custom-guardrails)
   - [Enforcement modes](#enforcement-modes)
   - [Hands-on labs](#hands-on-labs)
-- [Delete](#delete)
 - [References](#references)
 - [Document management](#document-management)
 - [Tags](#tags)
 
 ## Detailed description
 
-Imagine a financial services team deploying an AI-powered assistant to help underwriters review policies, analyze risk documents, and answer questions about compliance guidelines. The assistant uses a large language model served on Red Hat OpenShift AI, with Retrieval-Augmented Generation (RAG) grounding its answers in the firm's own document corpus — underwriting manuals, regulatory filings, and internal procedures. Before moving the application to production, a security review reveals critical AI-specific risks: a crafted prompt could trick the model into ignoring its system instructions and leaking confidential data, the model might return personally identifiable information (PII) embedded in training data, responses could contain toxic or harmful content, and nothing prevents the assistant from answering questions outside its approved domain.
+Imagine a financial services team deploying an AI-powered assistant to help underwriters review policies, analyze risk documents, and answer questions about compliance guidelines. The assistant uses a large language model served on Red Hat® OpenShift® AI, with Retrieval-Augmented Generation (RAG) grounding its answers in the firm's own document corpus — underwriting manuals, regulatory filings, and internal procedures. Before moving the application to production, a security review reveals critical AI-specific risks: a crafted prompt could trick the model into ignoring its system instructions and leaking confidential data, the model might return personally identifiable information (PII) embedded in training data, responses could contain toxic or harmful content, and nothing prevents the assistant from answering questions outside its approved domain.
 
 These are not traditional network-layer threats — they are AI-layer threats that operate within legitimate API calls. A WAF cannot inspect whether a model response contains a Social Security number or whether a prompt is attempting instruction injection.
 
-This AI quickstart demonstrates a solution using **F5 AI Guardrails** (powered by Calypso AI). It deploys a complete RAG chatbot on OpenShift AI and secures the model inference endpoints with AI-aware content inspection. You get a working application you can demonstrate to security, compliance, and risk stakeholders — complete with simulated attack scenarios that show exactly how each protection layer responds.
+This AI quickstart demonstrates a solution using **F5 AI Guardrails** (powered by Calypso AI). It deploys a complete RAG chatbot on Red Hat OpenShift AI and secures the model inference endpoints with AI-aware content inspection. You get a working application you can demonstrate to security, compliance, and risk stakeholders — complete with simulated attack scenarios that show exactly how each protection layer responds.
 
 While the included demo content targets financial services, the same architecture applies to any industry handling sensitive data — healthcare organizations protecting patient records, government agencies securing citizen-facing AI services, or any enterprise that needs to enforce content safety policies on LLM endpoints before moving to production.
 
@@ -53,7 +53,7 @@ The solution is built on:
 
 ### Architecture
 
-![RAG Architecture with F5 AI Guardrails](docs/images/rag-architecture-f5ai.png)
+![System architecture diagram showing F5 AI Guardrails intercepting requests between client and LlamaStack RAG application](docs/images/rag-architecture-f5ai.png)
 
 **Data flow:** The client sends a chat request to the F5 AI Guardrails Moderator endpoint. The Moderator passes the prompt through the Guardrails engine, which evaluates it against active policies (prompt injection, PII, toxicity, topic). If the prompt passes, it is forwarded to LlamaStack, which routes it to the vLLM ServingRuntime via KServe on OpenShift AI. For RAG queries, LlamaStack also retrieves grounding context from the PGVector database (running on OpenShift, outside the OpenShift AI plane). The model response is then scanned again on the way back. If either the prompt or response violates a policy, the request is blocked and the client receives an error.
 
@@ -249,6 +249,19 @@ When both fields are set, chat requests are routed through the guardrail proxy. 
 - **RAG** — Upload documents, create vector database collections, and query with retrieval-augmented generation
 - **Direct/Guardrail modes** — Chat directly with LlamaStack or route through F5 AI Guardrails for prompt injection, PII, toxicity, and topic enforcement
 
+### Uninstall
+
+From `deploy/helm`, `make uninstall` removes the RAG Helm release, tears down the F5 AI Guardrails operator (SecurityOperator, subscription, CSVs matching `f5-ai-security-operator`), deletes the default operator namespaces (`f5-ai-sec`, `cai-moderator`, `f5-ai-sec-inference`, `prefect`), and deletes your RAG `NAMESPACE` project.
+
+```bash
+cd deploy/helm
+make uninstall NAMESPACE=<NAMESPACE>
+```
+
+Override names if your install differs (see `deploy/helm/Makefile` defaults):
+
+`SECURITYOPERATOR_NAME`, `CAI_MODERATOR_NS`, `F5_OPERATOR_NS`, `OPERATOR_SUBSCRIPTION`, `GUARDRAILS_PROJECT_NS`.
+
 ## AI security capabilities
 
 Once deployed, F5 AI Guardrails provides defense-in-depth across multiple AI threat categories. Each protection can be tested interactively through the included hands-on labs.
@@ -266,7 +279,7 @@ Once deployed, F5 AI Guardrails provides defense-in-depth across multiple AI thr
 
 **Example: Prompt injection blocked in the chat app**
 
-![Prompt Injection Blocked](docs/images/lab1-task1-chat-prompt-injection_new.png)
+![Chat interface showing malicious prompt blocked by F5 AI Guardrails with error message](docs/images/lab1-task1-chat-prompt-injection_new.png)
 
 ### Custom guardrails
 
@@ -280,7 +293,7 @@ Once deployed, F5 AI Guardrails provides defense-in-depth across multiple AI thr
 
 **Example: Same prompt allowed before custom guardrail, blocked after**
 
-![Before and After Custom Guardrail](docs/images/lab2-task1-before-after-scanner_new.png)
+![Side-by-side comparison showing same prompt allowed before guardrail configuration and blocked after](docs/images/lab2-task1-before-after-scanner_new.png)
 
 ### Enforcement modes
 
@@ -296,7 +309,7 @@ Each guardrail operates in one of three modes:
 
 **Example: Guardrail details in the Logs UI — full visibility into which guardrails fired**
 
-![Guardrail Details Log](docs/images/lab1-task1-log-details_new.png)
+![Moderator UI logs panel displaying which guardrails triggered and violation details](docs/images/lab1-task1-log-details_new.png)
 
 ### Hands-on labs
 
@@ -310,35 +323,6 @@ The **[AI Guardrails Use Case Guide](docs/ai_guardrails_use_cases.md)** provides
 
 
 The labs use the Streamlit chat app and the Moderator UI, with optional `curl` commands for scripted testing. The use case guide is updated as new guardrail capabilities are released.
-
-## Delete
-
-Remove the RAG stack:
-
-```bash
-cd deploy/helm
-make uninstall NAMESPACE=<NAMESPACE>
-```
-
-Remove F5 AI Guardrails (operator and all managed namespaces):
-
-```bash
-# Delete the SecurityOperator CR (triggers cleanup of managed namespaces)
-oc delete securityoperator security-operator-demo -n cai-moderator
-
-# Delete the operator subscription and CSV
-oc delete subscription f5-ai-security-operator -n f5-ai-sec
-oc delete csv f5-ai-security-operator.v0.7.0 -n f5-ai-sec
-
-# Delete namespaces
-oc delete project f5-ai-sec cai-moderator f5-ai-sec-inference prefect
-```
-
-To delete the RAG namespace entirely:
-
-```bash
-oc delete project <NAMESPACE>
-```
 
 ## References
 
@@ -375,8 +359,7 @@ Navigate to **Settings → Vector Databases** in the frontend to create vector d
 
 ## Tags
 
-- **Title:** Secure model inference with F5 AI Guardrails
-- **Industry:** Banking and securities
-- **Product:** OpenShift AI, OpenShift, F5 AI Guardrails
-- **Contributor org:** F5 / Red Hat
+* **Industry:** Banking and securities
+* **Product:** OpenShift AI, OpenShift, F5 AI Guardrails
+* **Contributor org:** F5 / Red Hat
 

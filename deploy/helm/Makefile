@@ -27,6 +27,13 @@ POSTGRES_DBNAME ?= rag_blueprint
 RAG_CHART := rag
 TOLERATIONS_TEMPLATE=[{"key":"$(1)","effect":"NoSchedule","operator":"Exists"}]
 
+# F5 AI Guardrails teardown (used by uninstall; override if your install differs)
+SECURITYOPERATOR_NAME ?= security-operator-demo
+CAI_MODERATOR_NS ?= cai-moderator
+F5_OPERATOR_NS ?= f5-ai-sec
+OPERATOR_SUBSCRIPTION ?= f5-ai-security-operator
+GUARDRAILS_PROJECT_NS ?= f5-ai-sec cai-moderator f5-ai-sec-inference prefect
+
 # Values file management
 VALUES_FILE := rag-values.yaml
 VALUES_EXAMPLE := rag-values.yaml.example
@@ -148,7 +155,7 @@ help: ## Show this help message
 	@echo -e ""
 	@echo -e "$(GREEN)Main Targets:$(NC)"
 	@echo -e "  install       - Install RAG deployment"
-	@echo -e "  uninstall     - Uninstall RAG deployment"
+	@echo -e "  uninstall     - Uninstall RAG + F5 AI Guardrails operator/namespaces"
 	@echo -e "  status        - Check deployment status"
 	@echo -e "  logs          - Show application logs"
 	@echo -e "  health        - Check health of all services"
@@ -458,12 +465,20 @@ uninstall: ## Uninstall the RAG deployment and clean up resources
 	@echo -e "$(BLUE)[INFO]$(NC) Removing pgvector PVCs from $(NAMESPACE)..."
 	@oc get pvc -n $(NAMESPACE) -o custom-columns=NAME:.metadata.name | grep -E '^pg-data' | xargs -I {} oc delete pvc -n $(NAMESPACE) {} ||:
 	@echo -e "$(BLUE)[INFO]$(NC) Deleting remaining pods in namespace $(NAMESPACE)..."
-	@oc delete pods -n $(NAMESPACE) --all
-	@echo -e "$(YELLOW)[INFO]$(NC) Checking for any remaining resources in namespace $(NAMESPACE)..."
-	@echo -e "$(BLUE)[INFO]$(NC) If you want to completely remove the namespace, run: oc delete project $(NAMESPACE)"
-	@echo -e "$(BLUE)[INFO]$(NC) Remaining resources in namespace $(NAMESPACE):"
-	@$(MAKE) status
-	@echo -e "$(GREEN)[SUCCESS]$(NC) Uninstall completed"
+	@oc delete pods -n $(NAMESPACE) --all || true
+	@echo -e "$(YELLOW)[INFO]$(NC) Remaining resources in namespace $(NAMESPACE) (before operator teardown):"
+	@$(MAKE) status || true
+	@echo -e "$(BLUE)[INFO]$(NC) Removing F5 AI Guardrails (SecurityOperator, subscription, CSV, namespaces)..."
+	@oc delete securityoperator $(SECURITYOPERATOR_NAME) -n $(CAI_MODERATOR_NS) --ignore-not-found 2>/dev/null || true
+	@oc delete subscription $(OPERATOR_SUBSCRIPTION) -n $(F5_OPERATOR_NS) --ignore-not-found 2>/dev/null || true
+	@for csv in $$(oc get csv -n $(F5_OPERATOR_NS) -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null | grep '^$(OPERATOR_SUBSCRIPTION)' || true); do \
+		oc delete csv "$$csv" -n $(F5_OPERATOR_NS) --ignore-not-found 2>/dev/null || true; \
+	done
+	@for ns in $(GUARDRAILS_PROJECT_NS); do \
+		oc delete project "$$ns" --wait=false 2>/dev/null || true; \
+	done
+	@oc delete project "$(NAMESPACE)" --wait=false 2>/dev/null || true
+	@echo -e "$(GREEN)[SUCCESS]$(NC) Uninstall completed (namespaces may stay Terminating until the cluster finishes cleanup)"
 
 # Check deployment status
 .PHONY: status
