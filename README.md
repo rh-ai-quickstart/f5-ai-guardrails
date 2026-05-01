@@ -1,6 +1,6 @@
 # Secure Model Inference with F5 AI Guardrails
 
-Guard AI applications against prompt attacks and data leakage with enterprise-grade LLM protection using F5 AI Guardrails on Red Hat® OpenShift® AI.
+Guard AI applications against prompt attacks and sensitive data leakage with enterprise-grade LLM protection using F5 AI Guardrails on Red Hat® OpenShift® AI.
 
 ## Table of contents
 
@@ -14,7 +14,7 @@ Guard AI applications against prompt attacks and data leakage with enterprise-gr
   - [Prerequisites](#prerequisites)
   - [Supported models](#supported-models)
   - [Installation steps](#installation-steps)
-  - [Delete](#delete)
+  - [Uninstall](#uninstall)
 - [AI security capabilities](#ai-security-capabilities)
   - [Out-of-the-box guardrail packages](#out-of-the-box-guardrail-packages)
   - [Custom guardrails](#custom-guardrails)
@@ -245,7 +245,7 @@ When both fields are set, chat requests are routed through the guardrail proxy. 
 - **RAG** — Upload documents, create vector database collections, and query with retrieval-augmented generation
 - **Direct/Guardrail modes** — Chat directly with LlamaStack or route through F5 AI Guardrails for prompt injection, PII, toxicity, and topic enforcement
 
-### Delete
+### Uninstall
 
 Remove the RAG stack:
 
