@@ -1,0 +1,8 @@
+apiVersion: v2
+name: f5-ai-security
+description: >-
+  OpenShift manifests for F5 AI Security Operator (OLM), SecurityOperator CR,
+  SCC anyuid bindings, Moderator routes, and Prefect worker cluster RBAC.
+type: application
+version: 0.1.0
+appVersion: "0.8.1"

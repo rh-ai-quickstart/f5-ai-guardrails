@@ -1,0 +1,85 @@
+# Default values for f5-ai-security. User overlay: registry + license (see ../f5-ai-security-values.yaml.example).
+# Moderator routes + baseUrl default to https://<MODERATOR_HOST_PREFIX>.<ingress domain> at install (Makefile).
+
+nameOverride: ""
+fullnameOverride: ""
+
+# All F5 product namespaces (override via Makefile: F5_AI_SECURITY_NAMESPACE, F5_MODERATOR_NS, …).
+productNamespaces:
+  operator: f5-ai-sec
+  moderator: cai-moderator
+  prefect: prefect
+  inference: f5-ai-sec-inference
+
+operator:
+  subscriptionEnabled: true
+  operatorGroupName: f5-ai-security-og
+  name: f5-ai-security-operator
+  channel: stable
+  # Must exist in certified-operators for channel stable (check: oc get packagemanifest f5-ai-security-operator -n openshift-marketplace -o jsonpath='{.status.channels[?(@.name=="stable")].currentCSV}')
+  startingCSV: f5-ai-security-operator.v0.8.1
+  source: certified-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic
+  # F5 AI Security operator v0.8.x CSV supports AllNamespaces only; OperatorGroup must have empty spec (not OwnNamespace).
+  operatorGroupAllNamespaces: true
+
+namespaces:
+  enabled: true
+  # Best practice: do not manage the Helm release namespace inside the chart.
+  # The Makefile uses `helm --create-namespace` for the operator namespace.
+  # Kept default=true for backwards compatibility; the Makefile sets it false.
+  manageOperatorNamespace: true
+
+registry:
+  server: harbor.calypsoai.app
+  username: ""
+  password: ""
+  email: ""
+  secretName: regcred
+
+securityOperator:
+  enabled: true
+  # When true, SecurityOperator is rendered only if the CRD is already on the cluster (after CSV install).
+  waitForCrd: true
+  name: security-operator-demo
+  postgresql:
+    enabled: true
+    password: pass
+  jobManager:
+    enabled: true
+  moderator:
+    baseUrl: ""
+    dbAdminPassword: pass
+    license: ""
+  inference:
+    guardrails: true
+    redteam: true
+    # Merge KubeAI GPU tolerations into the operator inference Helm values. OpenShift GPU
+    # nodes often use taint nvidia.com/gpu=true; F5 defaults may use value=present or omit
+    # tolerations on some profiles (e.g. nvidia-gpu-a10g), leaving model pods Pending.
+    kubeaiGpuTolerations:
+      enabled: true
+
+routes:
+  enabled: true
+  # Set to the public hostname for Moderator (e.g. aisec.apps.cluster.example.com); omit scheme.
+  hostname: ""
+  tlsTermination: edge
+
+sccBindings:
+  enabled: true
+  # Service account names match the operator defaults; only namespaces are parameterized above.
+
+prefectRbac:
+  enabled: true
+  clusterRoleName: prefect-worker-watch-cluster
+  clusterRoleBindingName: prefect-worker-watch-cluster
+
+# Grants controller-manager pods/status so jobManager Helm can create delegated Roles (escalation rule).
+controllerManagerRbac:
+  enabled: true
+  clusterRoleName: f5-ai-security-controller-manager-pods-status
+  clusterRoleBindingName: f5-ai-security-controller-manager-pods-status
+  # Must match extras/openshift-inference-models-scc.yaml metadata.name (operator Helm patches this SCC).
+  inferenceModelsSccName: f5-ai-sec-inference-models

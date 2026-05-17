@@ -1,0 +1,23 @@
+{{- if .Values.namespaces.enabled }}
+{{- $op := .Values.productNamespaces.operator }}
+{{- $mod := .Values.productNamespaces.moderator }}
+{{- $pf := .Values.productNamespaces.prefect }}
+{{- $inf := .Values.productNamespaces.inference }}
+{{- $names := list $mod $pf $inf }}
+{{- if .Values.namespaces.manageOperatorNamespace }}
+{{- $names = append $names $op }}
+{{- end }}
+{{- range $names }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ . }}
+  annotations:
+    "helm.sh/resource-policy": keep
+  labels:
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+    app.kubernetes.io/name: {{ include "f5-ai-security.name" $ }}
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+{{- end }}
+{{- end }}

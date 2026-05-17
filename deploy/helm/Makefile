@@ -27,12 +27,47 @@ POSTGRES_DBNAME ?= rag_blueprint
 RAG_CHART := rag
 TOLERATIONS_TEMPLATE=[{"key":"$(1)","effect":"NoSchedule","operator":"Exists"}]
 
-# F5 AI Guardrails teardown (used by uninstall; override if your install differs)
+# F5 AI Guardrails teardown (used by uninstall; keep in sync with F5_* namespace overrides)
 SECURITYOPERATOR_NAME ?= security-operator-demo
-CAI_MODERATOR_NS ?= cai-moderator
-F5_OPERATOR_NS ?= f5-ai-sec
+F5_AI_SECURITY_NAMESPACE ?= f5-ai-sec
+F5_MODERATOR_NS ?= cai-moderator
+F5_PREFECT_NS ?= prefect
+F5_INFERENCE_NS ?= f5-ai-sec-inference
+# Operator installs the inference Helm release with this name in F5_INFERENCE_NS (override only if F5 changes it).
+F5_INFERENCE_HELM_RELEASE ?= f5-ai-sec-inference
+F5_OPERATOR_NS ?= $(F5_AI_SECURITY_NAMESPACE)
+CAI_MODERATOR_NS ?= $(F5_MODERATOR_NS)
 OPERATOR_SUBSCRIPTION ?= f5-ai-security-operator
-GUARDRAILS_PROJECT_NS ?= f5-ai-sec cai-moderator f5-ai-sec-inference prefect
+GUARDRAILS_PROJECT_NS ?= $(F5_AI_SECURITY_NAMESPACE) $(F5_MODERATOR_NS) $(F5_INFERENCE_NS) $(F5_PREFECT_NS)
+
+# F5 AI Security Operator + Guardrails (Helm chart in ./f5-ai-security)
+F5_AI_SECURITY_CHART ?= f5-ai-security
+F5_AI_SECURITY_VALUES ?= f5-ai-security-values.yaml
+F5_AI_SECURITY_VALUES_EXAMPLE ?= f5-ai-security-values.yaml.example
+F5_AI_SECURITY_RELEASE ?= f5-ai-security
+OPERATOR_CSV ?= f5-ai-security-operator.v0.8.1
+# Optional: extra helm --set/--set-string/--set-file for F5 chart (quoted as needed)
+EXTRA_HELM_F5_ARGS ?=
+# First install: --create-namespace plus chart Namespace manifests can race; --take-ownership smooths adoption (Helm 3.13+). Clear with F5_HELM_FLAGS=
+F5_HELM_FLAGS ?= --take-ownership
+# F5 helm first-pass retries (namespace / API races on cold clusters)
+F5_HELM_MAX_ATTEMPTS ?= 8
+F5_HELM_RETRY_SLEEP ?= 6
+# OpenShift: pre-apply inference model SCC (operator SA cannot create SCCs). Set to 1 to skip.
+SKIP_F5_INFERENCE_SCC ?= 0
+# After install: delete Pending KubeAI model pods once after a wait (transient Insufficient cpu/gpu only). Set 1 to enable.
+F5_INFERENCE_PENDING_POD_DELETE ?= 0
+F5_INFERENCE_SCHEDULE_WAIT_SECONDS ?= 90
+# Set REQUIRE_GPU=1 so validate-infra fails if no node advertises nvidia.com/gpu (default: warn only)
+# SKIP_INFRA_CHECK=1 skips validate-infra before install / install-f5-ai-security
+# KServe webhooks need backing pods; CRDs alone are not enough (avoid "no endpoints" on helm install)
+KSERVE_WEBHOOK_NAMESPACE ?= redhat-ods-applications
+KSERVE_WEBHOOK_SERVICE ?= kserve-webhook-server-service
+KSERVE_WEBHOOK_WAIT_SECONDS ?= 300
+# Moderator public URL: first DNS label + oc get ingress.config cluster (.spec.domain). Set MODERATOR_HOST_AUTO=false
+# to use securityOperator.moderator.baseUrl and routes.hostname from values only. Clear prefix: make ... MODERATOR_HOST_PREFIX=
+MODERATOR_HOST_AUTO ?= true
+MODERATOR_HOST_PREFIX ?= aisec
 
 # Values file management
 VALUES_FILE := rag-values.yaml
@@ -94,7 +129,7 @@ endef
 # Helper function to validate values file
 define validate_values_file
 	echo -e "$(BLUE)[INFO]$(NC) Validating configuration values..."; \
-	HF_TOKEN=$$(grep -A 2 "^llm-service:" "$(VALUES_FILE)" | grep "hf_token:" | sed 's/.*hf_token: *//' | tr -d '"' | tr -d ' '); \
+	HF_TOKEN=$$(grep -A 40 "^llm-service:" "$(VALUES_FILE)" | grep "hf_token:" | head -1 | sed 's/.*hf_token: *//' | tr -d '"' | tr -d ' '); \
 	UPDATED=0; \
 	if [ -z "$$HF_TOKEN" ] || [ "$$HF_TOKEN" = "" ]; then \
 		echo -e "$(YELLOW)[WARNING]$(NC) Hugging Face token is not set. Model downloads may fail."; \
@@ -154,14 +189,17 @@ help: ## Show this help message
 	@echo -e "$(GREEN)Usage:$(NC) make [TARGET]"
 	@echo -e ""
 	@echo -e "$(GREEN)Main Targets:$(NC)"
-	@echo -e "  install       - Install RAG deployment"
+	@echo -e "  install       - Install RAG chart, then F5 AI Security chart (see SKIP_F5_GUARDRAILS)"
 	@echo -e "  uninstall     - Uninstall RAG + F5 AI Guardrails operator/namespaces"
+	@echo -e "  install-f5-ai-security - Install only the f5-ai-security Helm chart"
+	@echo -e "  print-moderator-host - Print routes hostname + baseUrl for current MODERATOR_HOST_PREFIX (needs oc)"
 	@echo -e "  status        - Check deployment status"
 	@echo -e "  logs          - Show application logs"
 	@echo -e "  health        - Check health of all services"
 	@echo -e ""
 	@echo -e "$(GREEN)Development Targets:$(NC)"
-	@echo -e "  validate      - Validate Helm chart"
+	@echo -e "  validate      - Validate RAG and f5-ai-security Helm charts"
+	@echo -e "  validate-infra - Preflight: oc login, ingress, KServe CRDs + webhook endpoints, optional GPU"
 	@echo -e "  validate-config - Validate configuration values"
 	@echo -e "  monitor       - Monitor deployment status"
 	@echo -e "  config        - Show current configuration"
@@ -182,8 +220,25 @@ help: ## Show this help message
 	@echo -e "  show-config   - Show current configuration"
 	@echo -e ""
 	@echo -e "$(GREEN)Configuration:$(NC)"
-	@echo -e "  NAMESPACE     - Target namespace (required)"
+	@echo -e "  NAMESPACE     - RAG / LlamaStack namespace (required for install/uninstall/...)"
 	@echo -e "  VALUES_FILE   - Configuration file (default: rag-values.yaml)"
+	@echo -e "  F5_AI_SECURITY_VALUES - F5 chart values (default: f5-ai-security-values.yaml)"
+	@echo -e "  F5_AI_SECURITY_NAMESPACE - Operator / Helm release namespace (default: f5-ai-sec)"
+	@echo -e "  F5_MODERATOR_NS / F5_PREFECT_NS / F5_INFERENCE_NS - Product namespaces (defaults match docs)"
+	@echo -e "  MODERATOR_HOST_AUTO - If false, do not set routes/baseUrl from cluster (default: true)"
+	@echo -e "  MODERATOR_HOST_PREFIX - First DNS label for Moderator host (default: aisec); empty disables auto URL"
+	@echo -e "  SKIP_F5_GUARDRAILS - If set (non-empty), install skips the F5 chart"
+	@echo -e "  SKIP_F5_OPERATOR_WAIT - If 1, skip oc wait for operator CSV after F5 chart"
+	@echo -e "  F5_HELM_FLAGS - Extra flags for F5 helm (default: --take-ownership; set empty to disable)"
+	@echo -e "  F5_HELM_MAX_ATTEMPTS / F5_HELM_RETRY_SLEEP - F5 helm first-pass retry tuning (defaults: 8 / 6)"
+	@echo -e "  SKIP_INFRA_CHECK - If 1, skip validate-infra before install / install-f5-ai-security"
+	@echo -e "  REQUIRE_GPU - If 1, validate-infra fails when no nvidia.com/gpu allocatable (default: warn only)"
+	@echo -e "  KSERVE_WEBHOOK_NAMESPACE / KSERVE_WEBHOOK_SERVICE - webhook Service for validate-infra wait"
+	@echo -e "  KSERVE_WEBHOOK_WAIT_SECONDS - wait for webhook endpoints (default 300; 0 = one check only)"
+	@echo -e "  EXTRA_HELM_F5_ARGS - Extra arguments passed to helm for the F5 chart"
+	@echo -e ""
+	@echo -e "  Optional env (same pattern as HF_TOKEN for RAG): if set, passed as --set-string to F5 chart"
+	@echo -e "    DOCKER_USERNAME DOCKER_PASSWORD DOCKER_EMAIL F5_LICENSE MODERATOR_BASE_URL ROUTES_HOSTNAME"
 	@echo -e ""
 	@echo -e "$(GREEN)Command-Line Parameters (override values file):$(NC)"
 	@echo -e "  LLM           - Enable specific LLM model (e.g., llama-3-2-3b-instruct)"
@@ -201,7 +256,8 @@ help: ## Show this help message
 	@echo -e "  $(BLUE)Option 1:$(NC) Using values file (recommended)"
 	@echo -e "    1. make init-config  # Create configuration from example"
 	@echo -e "    2. make configure-keys  # Set up API keys interactively"
-	@echo -e "    3. make install NAMESPACE=my-rag  # Install with your config"
+	@echo -e "    3. make validate-infra  # Optional: confirm OpenShift AI + cluster (recommended on fresh clusters)"
+	@echo -e "    4. make install NAMESPACE=my-rag  # Install with your config"
 	@echo -e ""
 	@echo -e "  $(BLUE)Option 2:$(NC) Using command-line parameters"
 	@echo -e "    make install NAMESPACE=my-rag LLM=llama-3-2-3b-instruct LLM_TOLERATION=\"nvidia.com/gpu\""
@@ -217,6 +273,73 @@ check-deps: ## Check required dependencies
 .PHONY: check-namespace
 check-namespace: ## Check if namespace exists and is accessible
 	@oc get namespace $(NAMESPACE) >/dev/null 2>&1 || { echo -e "$(RED)[ERROR]$(NC) Namespace $(NAMESPACE) does not exist or is not accessible"; exit 1; }
+
+# Cluster preflight (OpenShift AI / KServe, routes, optional GPU)
+.PHONY: validate-infra
+validate-infra: check-deps ## Preflight cluster for RAG + F5 (run before install on fresh clusters)
+	@echo -e "$(BLUE)[INFO]$(NC) Validating cluster infrastructure..."
+	@oc whoami >/dev/null 2>&1 || { echo -e "$(RED)[ERROR]$(NC) Not logged in. Run: oc login ..."; exit 1; }; \
+	echo -e "$(GREEN)[OK]$(NC) OpenShift auth: $$(oc whoami)"; \
+	DOMAIN=$$(oc get ingress.config cluster -o jsonpath='{.spec.domain}' 2>/dev/null || true); \
+	if [ -z "$$DOMAIN" ]; then \
+		echo -e "$(RED)[ERROR]$(NC) ingress.config/cluster has no .spec.domain (cluster API unreachable?)"; \
+		exit 1; \
+	fi; \
+	echo -e "$(GREEN)[OK]$(NC) Ingress domain: $$DOMAIN"; \
+	for crd in inferenceservices.serving.kserve.io servingruntimes.serving.kserve.io; do \
+		if ! oc get crd "$$crd" >/dev/null 2>&1; then \
+			echo -e "$(RED)[ERROR]$(NC) Missing CRD $$crd (install OpenShift AI / model serving / KServe first)."; \
+			exit 1; \
+		fi; \
+	done; \
+	echo -e "$(GREEN)[OK]$(NC) KServe CRDs present (InferenceService, ServingRuntime)"; \
+	KWNNS="$(KSERVE_WEBHOOK_NAMESPACE)"; KWSVC="$(KSERVE_WEBHOOK_SERVICE)"; KWMAX=$(KSERVE_WEBHOOK_WAIT_SECONDS); KWSTEP=10; KWELAPSED=0; \
+	echo -e "$(BLUE)[INFO]$(NC) Waiting for KServe webhook endpoints ($$KWNNS/$$KWSVC, up to $$KWMAX s)..."; \
+	while true; do \
+		EP=$$(oc get endpoints "$$KWSVC" -n "$$KWNNS" -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true); \
+		if [ -n "$$EP" ]; then \
+			echo -e "$(GREEN)[OK]$(NC) KServe webhook service has endpoints"; \
+			break; \
+		fi; \
+		if [ "$$KWELAPSED" -ge "$$KWMAX" ]; then \
+			echo -e "$(RED)[ERROR]$(NC) No endpoints for $$KWNNS/$$KWSVC after $$KWMAX s (webhooks will reject InferenceService/ServingRuntime)."; \
+			echo -e "$(BLUE)[INFO]$(NC) Wait for OpenShift AI / KServe pods, then retry. Check: oc get pods -n $$KWNNS | grep -i kserve"; \
+			exit 1; \
+		fi; \
+		if ! oc get svc "$$KWSVC" -n "$$KWNNS" >/dev/null 2>&1; then \
+			echo -e "$(YELLOW)[WARN]$(NC) Service $$KWSVC not in $$KWNNS yet ($$KWELAPSED/$$KWMAX s)..."; \
+		else \
+			echo -e "$(YELLOW)[WARN]$(NC) Service exists but no endpoints yet ($$KWELAPSED/$$KWMAX s)..."; \
+		fi; \
+		sleep $$KWSTEP; \
+		KWELAPSED=$$((KWELAPSED + KWSTEP)); \
+	done; \
+	if ! helm upgrade --help 2>/dev/null | grep -q -- '--take-ownership'; then \
+		echo -e "$(RED)[ERROR]$(NC) Helm does not support --take-ownership (need Helm 3.13+). Upgrade Helm for reliable F5 install."; \
+		exit 1; \
+	fi; \
+	echo -e "$(GREEN)[OK]$(NC) Helm supports --take-ownership"; \
+	GPU_LINES=$$(oc get nodes -o jsonpath='{range .items[*]}{.status.allocatable.nvidia\.com/gpu}{"\n"}{end}' 2>/dev/null | grep -E '^[1-9]' || true); \
+	if [ -z "$$GPU_LINES" ]; then \
+		if [ "$(REQUIRE_GPU)" = "1" ]; then \
+			echo -e "$(RED)[ERROR]$(NC) No node with allocatable nvidia.com/gpu (install NVIDIA GPU Operator and GPU workers, or set DEVICE=cpu in values)."; \
+			exit 1; \
+		else \
+			echo -e "$(YELLOW)[WARN]$(NC) No allocatable nvidia.com/gpu yet — GPU model pods may stay Pending until the GPU Operator exposes GPUs."; \
+		fi; \
+	else \
+		echo -e "$(GREEN)[OK]$(NC) At least one node advertises nvidia.com/gpu"; \
+	fi; \
+	if [ -z "$(SKIP_F5_GUARDRAILS)" ] && [ ! -f "$(F5_AI_SECURITY_VALUES)" ]; then \
+		echo -e "$(RED)[ERROR]$(NC) Missing $(F5_AI_SECURITY_VALUES). Run: make init-f5-config"; \
+		exit 1; \
+	fi; \
+	if [ -n "$(SKIP_F5_GUARDRAILS)" ]; then \
+		echo -e "$(BLUE)[INFO]$(NC) SKIP_F5_GUARDRAILS set; skipping F5 values file check."; \
+	else \
+		echo -e "$(GREEN)[OK]$(NC) F5 values file: $(F5_AI_SECURITY_VALUES)"; \
+	fi; \
+	echo -e "$(GREEN)[SUCCESS]$(NC) Infrastructure checks passed."
 
 # Configuration management
 .PHONY: config
@@ -290,9 +413,14 @@ namespace:
 # Validation targets
 .PHONY: validate
 validate: check-deps ## Validate Helm chart before installation
-	@echo -e "$(BLUE)[INFO]$(NC) Validating Helm chart..."
+	@echo -e "$(BLUE)[INFO]$(NC) Validating Helm charts..."
 	@helm lint $(RAG_CHART)
-	@helm template $(RAG_CHART) --dry-run
+	@helm template $(RAG_CHART) --dry-run >/dev/null
+	@helm lint $(F5_AI_SECURITY_CHART)
+	@helm template $(F5_AI_SECURITY_RELEASE) $(F5_AI_SECURITY_CHART) >/dev/null
+	@helm template $(F5_AI_SECURITY_RELEASE) $(F5_AI_SECURITY_CHART) --set securityOperator.waitForCrd=false \
+		--set-string securityOperator.moderator.baseUrl=https://helm-lint.local \
+		--set-string securityOperator.moderator.license=helm-lint >/dev/null
 	@echo -e "$(GREEN)[SUCCESS]$(NC) Helm chart validation passed"
 
 .PHONY: validate-config
@@ -390,7 +518,7 @@ list-models: depend ## List available models
 .PHONY: install
 install: ## Install the RAG deployment
 	@if [ -z "$(NAMESPACE)" ]; then echo -e "$(RED)[ERROR]$(NC) NAMESPACE is required for install"; exit 1; fi
-	@$(MAKE) check-deps
+	@if [ "$(SKIP_INFRA_CHECK)" != "1" ]; then $(MAKE) validate-infra; else $(MAKE) check-deps; fi
 	@$(MAKE) namespace
 	@$(MAKE) depend
 	@$(MAKE) delete-jobs
@@ -453,8 +581,152 @@ install: ## Install the RAG deployment
 	HELM_ARGS="$$HELM_ARGS $(EXTRA_HELM_ARGS)"; \
 	helm -n $(NAMESPACE) upgrade --install $(RAG_CHART) $(RAG_CHART) -n $(NAMESPACE) $$HELM_ARGS
 	@echo -e "$(BLUE)[INFO]$(NC) Waiting for model services and llamastack to deploy. It may take around 10-15 minutes depending on the size of the model..."
-	@oc rollout status deploy/llamastack
+	@oc rollout status deploy/llamastack -n $(NAMESPACE) --timeout=900s
 	@echo -e "$(GREEN)[SUCCESS]$(NC) $(RAG_CHART) installed successfully"
+	@if [ -n "$(SKIP_F5_GUARDRAILS)" ]; then \
+		echo -e "$(YELLOW)[INFO]$(NC) SKIP_F5_GUARDRAILS is set; skipping F5 AI Security chart."; \
+	else \
+		$(MAKE) install-f5-ai-security; \
+	fi
+
+.PHONY: init-f5-config
+init-f5-config: ## Create f5-ai-security-values.yaml from example if missing
+	@if [ -f "$(F5_AI_SECURITY_VALUES)" ]; then \
+		echo -e "$(YELLOW)[INFO]$(NC) $(F5_AI_SECURITY_VALUES) already exists."; \
+	else \
+		cp "$(F5_AI_SECURITY_VALUES_EXAMPLE)" "$(F5_AI_SECURITY_VALUES)"; \
+		echo -e "$(GREEN)[SUCCESS]$(NC) Created $(F5_AI_SECURITY_VALUES) from $(F5_AI_SECURITY_VALUES_EXAMPLE)"; \
+		echo -e "$(BLUE)[INFO]$(NC) Edit registry credentials, license; set routes + baseUrl or use MODERATOR_HOST_PREFIX= (see README)."; \
+	fi
+
+.PHONY: print-moderator-host
+print-moderator-host: check-deps ## Print routes.hostname and moderator.baseUrl (default prefix aisec; requires oc)
+	@PREFIX="$(MODERATOR_HOST_PREFIX)"; \
+	if [ -z "$$PREFIX" ]; then PREFIX=aisec; fi; \
+	DOMAIN=$$(oc get ingress.config cluster -o jsonpath='{.spec.domain}' 2>/dev/null || true); \
+	if [ -z "$$DOMAIN" ]; then \
+		echo -e "$(RED)[ERROR]$(NC) Could not read ingress.config/cluster .spec.domain (oc login?)"; \
+		exit 1; \
+	fi; \
+	HOST="$$PREFIX.$$DOMAIN"; \
+	echo -e "$(GREEN)routes.hostname:$(NC) $$HOST"; \
+	echo -e "$(GREEN)securityOperator.moderator.baseUrl:$(NC) https://$$HOST"
+
+.PHONY: install-f5-ai-security
+install-f5-ai-security: ## Install F5 AI Security / Guardrails Helm chart only
+	@if [ "$(SKIP_INFRA_CHECK)" != "1" ]; then $(MAKE) validate-infra; else $(MAKE) check-deps; fi
+	@set -e; \
+	if [ ! -f "$(F5_AI_SECURITY_VALUES)" ]; then \
+		echo -e "$(RED)[ERROR]$(NC) Missing $(F5_AI_SECURITY_VALUES)."; \
+		echo -e "$(BLUE)[INFO]$(NC) Run: $(BLUE)make init-f5-config$(NC) then edit $(F5_AI_SECURITY_VALUES)"; \
+		exit 1; \
+	fi; \
+	echo -e "$(BLUE)[INFO]$(NC) Installing $(F5_AI_SECURITY_CHART) (operator ns: $(F5_AI_SECURITY_NAMESPACE), moderator: $(F5_MODERATOR_NS))..."; \
+	F5_NS_SET="--set-string productNamespaces.operator=$(F5_AI_SECURITY_NAMESPACE) \
+		--set-string productNamespaces.moderator=$(F5_MODERATOR_NS) \
+		--set-string productNamespaces.prefect=$(F5_PREFECT_NS) \
+		--set-string productNamespaces.inference=$(F5_INFERENCE_NS)"; \
+	AUTO_HOST=""; \
+	MA="$(MODERATOR_HOST_AUTO)"; \
+	if [ -z "$$MA" ]; then MA=true; fi; \
+	if [ "$$MA" != "false" ]; then \
+		PREFIX="$(MODERATOR_HOST_PREFIX)"; \
+		if [ -z "$$PREFIX" ]; then PREFIX=aisec; fi; \
+		DOMAIN=$$(oc get ingress.config cluster -o jsonpath='{.spec.domain}' 2>/dev/null || true); \
+		if [ -z "$$DOMAIN" ]; then \
+			echo -e "$(RED)[ERROR]$(NC) MODERATOR_HOST_AUTO is true but ingress.config/cluster .spec.domain is empty or unreadable."; \
+			exit 1; \
+		fi; \
+		HOST="$$PREFIX.$$DOMAIN"; \
+		echo -e "$(BLUE)[INFO]$(NC) Moderator URL (prefix=$$PREFIX): routes.hostname=$$HOST securityOperator.moderator.baseUrl=https://$$HOST"; \
+		AUTO_HOST="--set-string routes.hostname=$$HOST --set-string securityOperator.moderator.baseUrl=https://$$HOST"; \
+	fi; \
+	ENV_SET=""; \
+	if [ -n "$${DOCKER_USERNAME:-}" ]; then ENV_SET="$$ENV_SET --set-string registry.username=$${DOCKER_USERNAME}"; fi; \
+	if [ -n "$${DOCKER_PASSWORD:-}" ]; then ENV_SET="$$ENV_SET --set-string registry.password=$${DOCKER_PASSWORD}"; fi; \
+	if [ -n "$${DOCKER_EMAIL:-}" ]; then ENV_SET="$$ENV_SET --set-string registry.email=$${DOCKER_EMAIL}"; fi; \
+	if [ -n "$${F5_LICENSE:-}" ]; then ENV_SET="$$ENV_SET --set-string securityOperator.moderator.license=$${F5_LICENSE}"; fi; \
+	if [ -n "$${MODERATOR_BASE_URL:-}" ]; then ENV_SET="$$ENV_SET --set-string securityOperator.moderator.baseUrl=$${MODERATOR_BASE_URL}"; fi; \
+	if [ -n "$${ROUTES_HOSTNAME:-}" ]; then ENV_SET="$$ENV_SET --set-string routes.hostname=$${ROUTES_HOSTNAME}"; fi; \
+	HELM_EXTRAS="$$F5_NS_SET $$AUTO_HOST $$ENV_SET --set namespaces.manageOperatorNamespace=false $(EXTRA_HELM_F5_ARGS)"; \
+	echo -e "$(BLUE)[INFO]$(NC) Installing $(F5_AI_SECURITY_CHART) (Helm --create-namespace; retries if API race)..."; \
+	ATTEMPT=1; \
+	while [ $$ATTEMPT -le $(F5_HELM_MAX_ATTEMPTS) ]; do \
+		if helm upgrade --install $(F5_AI_SECURITY_RELEASE) $(F5_AI_SECURITY_CHART) \
+			-n $(F5_AI_SECURITY_NAMESPACE) --create-namespace \
+			$(F5_HELM_FLAGS) \
+			-f "$(F5_AI_SECURITY_VALUES)" $$HELM_EXTRAS; then \
+			break; \
+		fi; \
+		if [ $$ATTEMPT -eq $(F5_HELM_MAX_ATTEMPTS) ]; then \
+			echo -e "$(RED)[ERROR]$(NC) Helm install failed after $(F5_HELM_MAX_ATTEMPTS) attempts."; \
+			exit 1; \
+		fi; \
+		echo -e "$(YELLOW)[INFO]$(NC) Helm retry $$ATTEMPT/$(F5_HELM_MAX_ATTEMPTS) (e.g. namespace or API race)..."; \
+		ATTEMPT=$$((ATTEMPT + 1)); \
+		sleep $(F5_HELM_RETRY_SLEEP); \
+	done; \
+	if [ "$(SKIP_F5_OPERATOR_WAIT)" = "1" ]; then \
+		echo -e "$(YELLOW)[INFO]$(NC) SKIP_F5_OPERATOR_WAIT=1; not waiting for CSV."; \
+	else \
+		echo -e "$(BLUE)[INFO]$(NC) Waiting for operator CSV $(OPERATOR_CSV) (best-effort, 600s)..."; \
+		oc wait "csv/$(OPERATOR_CSV)" -n "$(F5_AI_SECURITY_NAMESPACE)" --for=jsonpath='{.status.phase}'=Succeeded --timeout=600s 2>/dev/null \
+			|| echo -e "$(YELLOW)[INFO]$(NC) CSV not Succeeded yet (first install or subscription disabled). Check: oc get csv -n $(F5_AI_SECURITY_NAMESPACE)"; \
+	fi; \
+	echo -e "$(BLUE)[INFO]$(NC) Waiting for SecurityOperator CRD (up to 120s)..."; \
+	W=0; \
+	while [ $$W -lt 60 ]; do \
+		if oc get crd securityoperators.ai.security.f5.com >/dev/null 2>&1; then \
+			echo -e "$(GREEN)[OK]$(NC) CRD securityoperators.ai.security.f5.com is present"; \
+			break; \
+		fi; \
+		W=$$((W+1)); \
+		sleep 2; \
+	done; \
+	if ! oc get crd securityoperators.ai.security.f5.com >/dev/null 2>&1; then \
+		echo -e "$(YELLOW)[WARN]$(NC) CRD not visible after 120s; continuing (Helm uses CRD lookup for SecurityOperator manifest)"; \
+	fi; \
+	if [ "$(SKIP_F5_INFERENCE_SCC)" != "1" ] && oc get scc restricted-v2 >/dev/null 2>&1; then \
+		INFER_SCC="$(CURDIR)/$(F5_AI_SECURITY_CHART)/extras/openshift-inference-models-scc.yaml"; \
+		if [ -f "$$INFER_SCC" ]; then \
+			echo -e "$(BLUE)[INFO]$(NC) Applying Inference OpenShift SCC (cluster-admin oc apply; operator cannot create SCCs)..."; \
+			sed -e "s|__F5_INFERENCE_NAMESPACE__|$(F5_INFERENCE_NS)|g" \
+				-e "s|__F5_INFERENCE_HELM_RELEASE_NAME__|$(F5_INFERENCE_HELM_RELEASE)|g" \
+				-e "s|__F5_INFERENCE_HELM_RELEASE_NAMESPACE__|$(F5_INFERENCE_NS)|g" \
+				"$$INFER_SCC" | oc apply -f -; \
+		else \
+			echo -e "$(YELLOW)[WARN]$(NC) Missing $$INFER_SCC; skip inference SCC pre-apply."; \
+		fi; \
+	fi; \
+	echo -e "$(BLUE)[INFO]$(NC) Re-applying chart so SecurityOperator is created once the CRD is registered..."; \
+	R2=1; \
+	while [ $$R2 -le 5 ]; do \
+		if helm upgrade --install $(F5_AI_SECURITY_RELEASE) $(F5_AI_SECURITY_CHART) \
+			-n $(F5_AI_SECURITY_NAMESPACE) --create-namespace \
+			$(F5_HELM_FLAGS) \
+			-f "$(F5_AI_SECURITY_VALUES)" $$HELM_EXTRAS; then \
+			break; \
+		fi; \
+		if [ $$R2 -eq 5 ]; then \
+			echo -e "$(RED)[ERROR]$(NC) Second Helm apply failed after 5 attempts."; \
+			exit 1; \
+		fi; \
+		echo -e "$(YELLOW)[INFO]$(NC) Second Helm apply retry $$R2/5..."; \
+		R2=$$((R2 + 1)); \
+		sleep $(F5_HELM_RETRY_SLEEP); \
+	done; \
+	if [ "$(F5_INFERENCE_PENDING_POD_DELETE)" != "0" ] && oc get ns "$(F5_INFERENCE_NS)" >/dev/null 2>&1; then \
+		echo -e "$(BLUE)[INFO]$(NC) If KubeAI model pods are Pending (capacity race), delete once after $(F5_INFERENCE_SCHEDULE_WAIT_SECONDS)s..."; \
+		sleep "$(F5_INFERENCE_SCHEDULE_WAIT_SECONDS)"; \
+		PEND=$$(oc get pods -n "$(F5_INFERENCE_NS)" --no-headers 2>/dev/null | awk '$$3=="Pending" && $$1 ~ /^model-/{print $$1}' || true); \
+		if [ -n "$$PEND" ]; then \
+			echo "$$PEND" | while read -r p; do \
+				if [ -n "$$p" ]; then oc delete pod -n "$(F5_INFERENCE_NS)" "$$p" --wait=false || true; fi; \
+			done; \
+			echo -e "$(BLUE)[INFO]$(NC) Deleted Pending model pod(s): $$(echo $$PEND | tr '\n' ' ')"; \
+		fi; \
+	fi; \
+	echo -e "$(GREEN)[SUCCESS]$(NC) $(F5_AI_SECURITY_CHART) release $(F5_AI_SECURITY_RELEASE) applied"
 
 # Uninstall the deployment and clean up
 .PHONY: uninstall
@@ -468,6 +740,8 @@ uninstall: ## Uninstall the RAG deployment and clean up resources
 	@oc delete pods -n $(NAMESPACE) --all || true
 	@echo -e "$(YELLOW)[INFO]$(NC) Remaining resources in namespace $(NAMESPACE) (before operator teardown):"
 	@$(MAKE) status || true
+	@echo -e "$(BLUE)[INFO]$(NC) Removing F5 AI Security Helm release (if present)..."
+	@helm -n $(F5_AI_SECURITY_NAMESPACE) uninstall $(F5_AI_SECURITY_RELEASE) 2>/dev/null || true
 	@echo -e "$(BLUE)[INFO]$(NC) Removing F5 AI Guardrails (SecurityOperator, subscription, CSV, namespaces)..."
 	@oc delete securityoperator $(SECURITYOPERATOR_NAME) -n $(CAI_MODERATOR_NS) --ignore-not-found 2>/dev/null || true
 	@oc delete subscription $(OPERATOR_SUBSCRIPTION) -n $(F5_OPERATOR_NS) --ignore-not-found 2>/dev/null || true

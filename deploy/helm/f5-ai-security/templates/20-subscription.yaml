@@ -1,0 +1,18 @@
+{{- if .Values.operator.subscriptionEnabled }}
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: {{ .Values.operator.name }}
+  namespace: {{ .Values.productNamespaces.operator }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: {{ include "f5-ai-security.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  channel: {{ .Values.operator.channel | quote }}
+  installPlanApproval: {{ .Values.operator.installPlanApproval }}
+  name: {{ .Values.operator.name }}
+  source: {{ .Values.operator.source | quote }}
+  sourceNamespace: {{ .Values.operator.sourceNamespace | quote }}
+  startingCSV: {{ .Values.operator.startingCSV | quote }}
+{{- end }}

@@ -1,0 +1,46 @@
+{{- if .Values.controllerManagerRbac.enabled }}
+# Extra permissions for the operator SA beyond the OLM CSV: escalation (pods/status on delegated Roles)
+# and jobManager Helm (batch CronJobs/Jobs in product namespaces).
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Values.controllerManagerRbac.clusterRoleName }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: {{ include "f5-ai-security.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods/status"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs", "jobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["security.openshift.io"]
+    resources: ["securitycontextconstraints"]
+    verbs: ["get", "list", "watch"]
+  # Pre-created SCC (extras/openshift-inference-models-scc.yaml) still needs patch/update during inference Helm.
+  - apiGroups: ["security.openshift.io"]
+    resources: ["securitycontextconstraints"]
+    resourceNames:
+      - {{ .Values.controllerManagerRbac.inferenceModelsSccName | quote }}
+    verbs: ["patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Values.controllerManagerRbac.clusterRoleBindingName }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: {{ include "f5-ai-security.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Values.controllerManagerRbac.clusterRoleName }}
+subjects:
+  - kind: ServiceAccount
+    name: controller-manager
+    namespace: {{ .Values.productNamespaces.operator }}
+{{- end }}

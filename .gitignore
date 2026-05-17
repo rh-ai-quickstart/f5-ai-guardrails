@@ -187,6 +187,7 @@ deploy/helm/secrets
 # User-specific configuration file (contains sensitive data)
 deploy/helm/rag-values.yaml
 deploy/helm/rag-values.yaml.old
+deploy/helm/f5-ai-security-values.yaml
 
 # Local F5 guardrails install (secrets; use *.env.example in repo when present)
 scripts/f5-guardrails-install.env

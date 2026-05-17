@@ -48,8 +48,8 @@ The solution is built on:
 - **Red Hat OpenShift AI** — MLOps platform with KServe/vLLM model serving and GPU acceleration
 - **F5 AI Guardrails** — AI-layer content inspection: prompt injection detection, PII filtering, toxicity scanning, and topic enforcement
 - **LLaMA Stack + Streamlit** — RAG chatbot interface backed by PGVector for semantic document retrieval
-- **Helm-based deployment** — One-command install and teardown of the RAG stack on any OpenShift cluster
-- **Manual deployment** — Step-by-step operator installation for F5 AI Guardrails
+- **Helm-based deployment** — `make install NAMESPACE=…` deploys the RAG stack and, unless `SKIP_F5_GUARDRAILS` is set, the F5 AI Security chart (`deploy/helm/f5-ai-security`) for operator + Guardrails
+- **Operator reference** — Manual console steps and edge cases: [Installing F5 AI Guardrails on OpenShift](docs/installing_f5_ai_guardrails.md)
 
 ### Architecture
 
@@ -124,41 +124,92 @@ The diagram above reflects this split: the **F5 AI Security Operator** manages t
 
 ### Installation steps
 
-#### Step 1: Deploy the RAG stack
+From `deploy/helm`, with `oc` and `helm` available. Cluster admin is required for the F5 chart (SCC bindings, OLM subscription, cluster RBAC).
+
+#### Step 1: Configure values (RAG + F5)
 
 1. **Log in to OpenShift**
-  ```bash
+   ```bash
    oc login --token=<your_sha256_token> --server=<cluster-api-endpoint>
-  ```
-2. **Clone and go to the deployment directory**
-  ```bash
+   ```
+2. **Clone and enter the Helm directory**
+   ```bash
    git clone https://github.com/rh-ai-quickstart/f5-ai-guardrails.git
    cd f5-ai-guardrails/deploy/helm
-  ```
-3. **Configure and deploy**
-  Create your values file:
-   Edit `rag-values.yaml` to enable one or more models:
-   Set your target namespace and deploy:
-   A successful run ends with:
-4. **Verify the RAG stack**
-  Get the LlamaStack route URL (uses `NAMESPACE` from the previous step):
-   List available models:
-   Test chat completion:
-   Replace `<MODEL_ID>` with the model identifier from the list models output (e.g., `llama-3-2-1b-instruct-quantized/RedHatAI/Llama-3.2-1B-Instruct-quantized.w8a8`).
+   ```
+3. **RAG values** — Copy and edit `rag-values.yaml` (gitignored; start from `rag-values.yaml.example`): enable models, set `llm-service.secret.hf_token`, and any other settings you need.
+4. **F5 values** — `make init-f5-config` (or copy `f5-ai-security-values.yaml.example` → `f5-ai-security-values.yaml`), then set only:
+   - **`registry.*`** — Harbor / F5 registry credentials  
+   - **`securityOperator.moderator.license`** — F5 license string  
 
-#### Step 2: Deploy F5 AI Guardrails
+   **`make install NAMESPACE=…`** fills **`routes.hostname`** and **`securityOperator.moderator.baseUrl`** from the cluster: `https://<prefix>.<ingress.apps.domain>`, with default **`MODERATOR_HOST_PREFIX=aisec`** (same as the install doc). Override the label with `make install NAMESPACE=… MODERATOR_HOST_PREFIX=othername`, or set **`MODERATOR_HOST_AUTO=false`** and define `routes.hostname` + `securityOperator.moderator.baseUrl` yourself in the values file. Override F5 namespaces with **`F5_*_NS`** only if needed.
 
-Follow the complete installation guide: **[Installing F5 AI Guardrails on OpenShift](docs/installing_f5_ai_guardrails.md)**
+**Credentials (aligned with RAG):** Prefer the gitignored values files so secrets are not committed. For automation, you can export optional environment variables before `make install` or `make install-f5-ai-security`; if set, they are passed to Helm as `--set-string` (same idea as `HF_TOKEN` for the RAG chart):
 
-This guide covers:
+| Variable | Helm value |
+|----------|------------|
+| `DOCKER_USERNAME` | `registry.username` |
+| `DOCKER_PASSWORD` | `registry.password` |
+| `DOCKER_EMAIL` | `registry.email` |
+| `F5_LICENSE` | `securityOperator.moderator.license` |
+| `MODERATOR_BASE_URL` | `securityOperator.moderator.baseUrl` |
+| `ROUTES_HOSTNAME` | `routes.hostname` |
 
-- Node Feature Discovery and GPU Operator prerequisites
-- F5 AI Security Operator installation via OperatorHub
-- SecurityOperator custom resource configuration
-- Required OpenShift SCC policies
-- Route configuration for UI access
-- Prefect Worker RBAC setup
-- LlamaStack endpoint integration
+Complex passwords or license strings may still need the values file. Additional chart overrides: `EXTRA_HELM_F5_ARGS`.
+
+Preview the computed Moderator host (uses the same defaults as install):
+
+```bash
+make print-moderator-host
+# or: make print-moderator-host MODERATOR_HOST_PREFIX=othername
+```
+
+#### Step 2: Install
+
+**RAG only** (no F5):
+
+```bash
+make install NAMESPACE=<your-rag-namespace> SKIP_F5_GUARDRAILS=1
+```
+
+**RAG and F5** (default): after Step 1, run:
+
+```bash
+make install NAMESPACE=<your-rag-namespace>
+```
+
+`NAMESPACE` is required and is only the target project for the **RAG** release (LlamaStack, models, etc.).
+
+**F5 namespaces** default to the documented layout (`f5-ai-sec`, `cai-moderator`, `prefect`, `f5-ai-sec-inference`). Override on the `make` command line so they stay in sync with the Helm chart (and with `make uninstall` teardown):
+
+| Make variable | Role |
+|---------------|------|
+| `F5_AI_SECURITY_NAMESPACE` | Operator install namespace and Helm `-n` target (default `f5-ai-sec`) |
+| `F5_MODERATOR_NS` | Moderator / `SecurityOperator` CR namespace (default `cai-moderator`) |
+| `F5_PREFECT_NS` | Prefect (default `prefect`) |
+| `F5_INFERENCE_NS` | Inference workloads (default `f5-ai-sec-inference`) |
+
+Example:
+
+```bash
+make install NAMESPACE=my-rag F5_AI_SECURITY_NAMESPACE=my-f5-op F5_MODERATOR_NS=my-mod
+```
+
+The F5 chart runs **after** the `llamastack` deployment rolls out successfully in `NAMESPACE`. The chart applies the operator `Subscription` first; the `SecurityOperator` CR is applied on a **second** `helm upgrade` pass after a best-effort `oc wait` on the operator CSV so the CRD exists (`SKIP_F5_OPERATOR_WAIT=1` skips that wait).
+
+**F5 only** (RAG already deployed):
+
+```bash
+make install-f5-ai-security
+```
+
+Validate charts without applying:
+
+```bash
+make validate
+```
+
+For console-only steps, GPU/NFD prerequisites, and LlamaStack UI integration (**Step 6**), see **[Installing F5 AI Guardrails on OpenShift](docs/installing_f5_ai_guardrails.md)**.
 
 #### Step 3: Verify the complete stack
 
@@ -251,16 +302,14 @@ When both fields are set, chat requests are routed through the guardrail proxy. 
 
 ### Uninstall
 
-From `deploy/helm`, `make uninstall` removes the RAG Helm release, tears down the F5 AI Guardrails operator (SecurityOperator, subscription, CSVs matching `f5-ai-security-operator`), deletes the default operator namespaces (`f5-ai-sec`, `cai-moderator`, `f5-ai-sec-inference`, `prefect`), and deletes your RAG `NAMESPACE` project.
+From `deploy/helm`, `make uninstall` runs `helm uninstall` for the RAG release, then `helm uninstall` for the `f5-ai-security` release (if present), then deletes the `SecurityOperator`, operator `Subscription`/CSVs, product namespaces (defaults or whatever you set with `F5_*_NS` during install), and finally the RAG `NAMESPACE` project.
 
 ```bash
 cd deploy/helm
 make uninstall NAMESPACE=<NAMESPACE>
 ```
 
-Override names if your install differs (see `deploy/helm/Makefile` defaults):
-
-`SECURITYOPERATOR_NAME`, `CAI_MODERATOR_NS`, `F5_OPERATOR_NS`, `OPERATOR_SUBSCRIPTION`, `GUARDRAILS_PROJECT_NS`.
+Use the same `F5_AI_SECURITY_NAMESPACE`, `F5_MODERATOR_NS`, `F5_PREFECT_NS`, and `F5_INFERENCE_NS` as at install time if you overrode defaults. Other Makefile defaults: `SECURITYOPERATOR_NAME`, `OPERATOR_SUBSCRIPTION`.
 
 ## AI security capabilities
 
@@ -328,15 +377,19 @@ The labs use the Streamlit chat app and the Moderator UI, with optional `curl` c
 
 - **Make commands:**
   ```bash
-  make help             # Show all available commands
-  make install          # Deploy the RAG application
-  make uninstall        # Remove the RAG application
-  make clean            # Clean up all RAG resources including namespace
-  make logs             # Show logs for all pods
-  make monitor          # Monitor deployment status
-  make status           # Check deployment status
-  make validate-config  # Validate configuration values
-  make deploy-ui-local   # Local UI in background (use make undeploy-ui-local to stop)
+  make help                  # Show all available commands
+  make validate              # helm lint + helm template (RAG + f5-ai-security)
+  make install NAMESPACE=…   # RAG + F5 (SKIP_F5_GUARDRAILS=1 for RAG only)
+  make install-f5-ai-security  # F5 chart only (requires f5-ai-security-values.yaml)
+  make print-moderator-host  # Show default hostname + baseUrl from ingress.config
+  make init-f5-config        # Create f5-ai-security-values.yaml from example
+  make uninstall             # RAG + F5 teardown (set NAMESPACE= and matching F5_* if used)
+  make clean                 # Clean up all RAG resources including namespace
+  make logs                  # Show logs for all pods
+  make monitor               # Monitor deployment status
+  make status                # Check deployment status
+  make validate-config       # Validate configuration values
+  make deploy-ui-local       # Local UI in background (use make undeploy-ui-local to stop)
   make undeploy-ui-local
   ```
   - [F5 AI Guardrails (Calypso AI)](https://www.f5.com/products/ai-gateway)
