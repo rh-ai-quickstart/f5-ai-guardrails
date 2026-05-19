@@ -361,5 +361,5 @@ Navigate to **Settings → Vector Databases** in the frontend to create vector d
 
 * **Industry:** Banking and securities
 * **Product:** OpenShift AI, OpenShift, F5 AI Guardrails
-* **Contributor org:** F5 / Red Hat
+* **Partner:** F5
 
