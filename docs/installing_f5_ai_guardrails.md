@@ -393,6 +393,12 @@ A successful response confirms that requests flow through the guardrails proxy t
 
 ---
 
+## Helm chart (automated install)
+
+The same Steps **2–5** can be applied with the Helm chart and Make targets in this repo. **Step 6** stays manual. See the repository root [README](../../README.md#deploy) *Deploy* section for commands, namespace overrides, and how credentials are handled (gitignored values file plus optional environment variables).
+
+---
+
 ## Troubleshooting
 
 For common failure patterns and fixes, see the [Troubleshooting guide](troubleshooting.md).

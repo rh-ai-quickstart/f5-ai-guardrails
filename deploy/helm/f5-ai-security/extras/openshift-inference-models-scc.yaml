@@ -1,0 +1,30 @@
+# OpenShift only: KubeAI model pods run as root; restricted-v2 blocks that.
+# The F5 inference Helm chart normally creates this SCC, but the operator
+# ServiceAccount cannot create SecurityContextConstraints. `make install-f5-ai-security`
+# applies this file (placeholders substituted) before the SecurityOperator reconciles inference.
+#
+# Helm ownership must match the operator-managed release `f5-ai-sec-inference` in the inference
+# namespace, or Helm fails with "exists and cannot be imported into the current release".
+#
+# Source: same fields as f5-ai-sec-inference-cust chart securityContextConstraints.yaml.
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: f5-ai-sec-inference-models
+  labels:
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: __F5_INFERENCE_HELM_RELEASE_NAME__
+    meta.helm.sh/release-namespace: __F5_INFERENCE_HELM_RELEASE_NAMESPACE__
+allowPrivilegeEscalation: false
+readOnlyRootFilesystem: false
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: MustRunAs
+seccompProfiles:
+  - runtime/default
+requiredDropCapabilities:
+  - ALL
+users:
+  - system:serviceaccount:__F5_INFERENCE_NAMESPACE__:f5-ai-sec-inference-models

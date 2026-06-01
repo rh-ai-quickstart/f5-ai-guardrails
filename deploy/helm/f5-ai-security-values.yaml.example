@@ -1,0 +1,27 @@
+# Copy to f5-ai-security-values.yaml (gitignored), then set Harbor registry + F5 license only:
+#   cp deploy/helm/f5-ai-security-values.yaml.example deploy/helm/f5-ai-security-values.yaml
+#
+# On `make install`, the Moderator public URL is set automatically to:
+#   https://<MODERATOR_HOST_PREFIX>.<oc get ingress.config cluster -o jsonpath='{.spec.domain}'>
+# Default prefix is `aisec` (override: make install MODERATOR_HOST_PREFIX=myname).
+# To use manual baseUrl + routes.hostname from this file instead: MODERATOR_HOST_AUTO=false
+#
+# Optional: same Make vars as RAG for namespaces — F5_AI_SECURITY_NAMESPACE, F5_MODERATOR_NS, …
+
+registry:
+  server: harbor.calypsoai.app
+  username: "YOUR_REGISTRY_USER"
+  password: "YOUR_REGISTRY_PASSWORD"
+  email: "your-email@example.com"
+
+securityOperator:
+  moderator:
+    license: "PASTE_F5_BASE64_LICENSE_STRING_HERE"
+
+# operator:
+#   channel: stable
+#   startingCSV: f5-ai-security-operator.v0.8.1   # must match certified-operators stable channel
+#   subscriptionEnabled: false   # if operator already installed from OperatorHub
+
+# routes:
+#   enabled: false               # until cai-moderator Service exists

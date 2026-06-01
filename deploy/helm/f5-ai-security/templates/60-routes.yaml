@@ -1,0 +1,47 @@
+{{- if and .Values.routes.enabled .Values.routes.hostname }}
+{{- $modNs := .Values.productNamespaces.moderator }}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: cai-moderator-ui
+  namespace: {{ $modNs }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: {{ include "f5-ai-security.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  host: {{ .Values.routes.hostname | quote }}
+  path: /
+  port:
+    targetPort: 5500
+  tls:
+    termination: {{ .Values.routes.tlsTermination }}
+  to:
+    kind: Service
+    name: cai-moderator
+    weight: 100
+  wildcardPolicy: None
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: cai-moderator-auth
+  namespace: {{ $modNs }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: {{ include "f5-ai-security.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  host: {{ .Values.routes.hostname | quote }}
+  path: /auth
+  port:
+    targetPort: 8080
+  tls:
+    termination: {{ .Values.routes.tlsTermination }}
+  to:
+    kind: Service
+    name: cai-moderator
+    weight: 100
+  wildcardPolicy: None
+{{- end }}

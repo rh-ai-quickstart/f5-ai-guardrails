@@ -1,0 +1,73 @@
+{{- /*
+  Do not use .Capabilities.APIVersions for this CRD: Helm often omits newly
+  registered API groups on upgrade, so the SecurityOperator manifest is skipped
+  even after CSV Succeeded (no pods in cai-moderator). Use live CRD lookup instead.
+*/}}
+{{- if .Values.securityOperator.enabled }}
+{{- $crdName := "securityoperators.ai.security.f5.com" }}
+{{- $crd := lookup "apiextensions.k8s.io/v1" "CustomResourceDefinition" "" $crdName }}
+{{- if or (not .Values.securityOperator.waitForCrd) $crd }}
+{{- $mod := .Values.securityOperator.moderator }}
+{{- $modNs := .Values.productNamespaces.moderator }}
+{{- $base := required "securityOperator.moderator.baseUrl must be set (e.g. https://aisec.apps...)" $mod.baseUrl }}
+{{- $lic := required "securityOperator.moderator.license must be set (F5 base64 license blob)" $mod.license }}
+apiVersion: ai.security.f5.com/v1alpha1
+kind: SecurityOperator
+metadata:
+  name: {{ .Values.securityOperator.name }}
+  namespace: {{ $modNs }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: {{ include "f5-ai-security.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  registryAuth:
+    enabled: true
+    existingSecret: {{ .Values.registry.secretName | quote }}
+    registry: {{ .Values.registry.server | quote }}
+    secretName: {{ .Values.registry.secretName | quote }}
+  {{- if .Values.securityOperator.postgresql.enabled }}
+  postgresql:
+    enabled: true
+    values:
+      postgresql:
+        auth:
+          password: {{ .Values.securityOperator.postgresql.password | quote }}
+  {{- else }}
+  postgresql:
+    enabled: false
+  {{- end }}
+  jobManager:
+    enabled: {{ .Values.securityOperator.jobManager.enabled }}
+  moderator:
+    enabled: true
+    values:
+      env:
+        CAI_MODERATOR_BASE_URL: {{ $base | quote }}
+      secrets:
+        CAI_MODERATOR_DB_ADMIN_PASSWORD: {{ $mod.dbAdminPassword | quote }}
+        CAI_MODERATOR_DEFAULT_LICENSE: {{ $lic | quote }}
+  inference:
+    enabled: true
+    values:
+      inference:
+        guardrails:
+          enabled: {{ .Values.securityOperator.inference.guardrails }}
+        redteam:
+          enabled: {{ .Values.securityOperator.inference.redteam }}
+      {{- if .Values.securityOperator.inference.kubeaiGpuTolerations.enabled }}
+      kubeai:
+        resourceProfiles:
+          nvidia-gpu-a10g:
+            tolerations:
+              - effect: NoSchedule
+                key: nvidia.com/gpu
+                operator: Exists
+          nvidia-gpu-l40s:
+            tolerations:
+              - effect: NoSchedule
+                key: nvidia.com/gpu
+                operator: Exists
+      {{- end }}
+{{- end }}
+{{- end }}
