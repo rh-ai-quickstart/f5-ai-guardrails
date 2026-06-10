@@ -151,9 +151,7 @@ pgvector:
     port: "5432"
 
 # Llama Stack Configuration
-llama-stack:
-  image:
-    tag: 0.6.0  # Match frontend client version
+# llama-stack: use subchart defaults (ogxai/distribution-starter:0.6.1)
 
 # Suggested Questions Configuration (Optional)
 # These questions appear in the chat UI when users select a database
